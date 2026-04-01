@@ -437,7 +437,17 @@
       text-shadow: 0 0 20px rgba(200,96,95,0.5);
       margin-bottom: 24px;
       position: relative;
+      text-decoration: none;
+      cursor: pointer;
+      transition: box-shadow 0.2s, background 0.2s;
     }
+
+    .instapay-handle:hover {
+      background: rgba(200,96,95,0.16);
+      box-shadow: 0 0 32px rgba(200,96,95,0.35);
+    }
+
+    .qr-wrapper a { display: contents; }
 
     .qr-wrapper {
       display: flex;
@@ -880,11 +890,13 @@
         <h3>Pay via InstaPay</h3>
         <p class="sub">Instant transfer · available 24/7 · all Egyptian banks supported</p>
 
-        <div class="instapay-handle">aql.ai@instapay</div>
+        <a href="https://ipn.eg/S/aql.ai/instapay/0Q6lpa" target="_blank" rel="noopener" class="instapay-handle">aql.ai@instapay</a>
 
         <div class="qr-wrapper">
-          <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=https://ipn.eg/S/aql.ai/instapay/0Q6lpa" alt="InstaPay QR Code" />
-          <span class="qr-note">Scan to open in InstaPay app</span>
+          <a href="https://ipn.eg/S/aql.ai/instapay/0Q6lpa" target="_blank" rel="noopener">
+            <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=https://ipn.eg/S/aql.ai/instapay/0Q6lpa" alt="InstaPay QR Code" />
+          </a>
+          <span class="qr-note">Tap QR or handle to open InstaPay</span>
         </div>
 
         <div class="deposit-breakdown">
