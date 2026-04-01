@@ -49,14 +49,21 @@ const METRIC_LABELS = {
   'AOV':                   'aov',
 };
 
-const PERIOD_OPTIONS = [
-  { value: 'this_week',  label: 'This Week'  },
-  { value: 'last_week',  label: 'Last Week'  },
-  { value: 'last_month', label: 'Last Month' },
-  { value: 'ytd',        label: 'YTD'        },
-  { value: 'last_year',  label: 'Last Year'  },
-  { value: 'all_time',   label: 'All Time'   },
-];
+
+const PRESET_LABELS = {
+  'last_7_days':   'Last 7 days',
+  'last_30_days':  'Last 30 days',
+  'last_60_days':  'Last 60 days',
+  'last_90_days':  'Last 90 days',
+  'last_week':     'Last week',
+  'last_month':    'Last month',
+  'last_year':     'Last year',
+  'week_to_date':  'Week to date',
+  'month_to_date': 'Month to date',
+  'ytd':           'Year to date',
+  'all_time':      'All time',
+  'custom':        null,
+};
 
 // === DATA PARSING UTILITIES ===
 
@@ -141,21 +148,101 @@ function parseMarketplaceSheet(rows, dataStartCol) {
   return { marketplaces: marketplaces, weekLabels: validLabels };
 }
 
+// Convert ISO year + week number → Monday date of that week
+function isoWeekToDate(year, week) {
+  const jan4 = new Date(year, 0, 4);
+  const w1Mon = new Date(jan4);
+  w1Mon.setDate(jan4.getDate() - ((jan4.getDay() || 7) - 1));
+  const d = new Date(w1Mon);
+  d.setDate(w1Mon.getDate() + (week - 1) * 7);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+// Filter weeks that overlap a calendar date range [start, end]
+function filterByDateRange(weeklyValues, start, end) {
+  if (!weeklyValues || !start || !end) return [];
+  return weeklyValues.filter(v => {
+    if (v.value === null) return false;
+    const wStart = isoWeekToDate(v.year, v.week);
+    const wEnd = new Date(wStart); wEnd.setDate(wStart.getDate() + 6);
+    return wStart <= end && wEnd >= start;
+  });
+}
+
 function filterByPeriod(weeklyValues, period) {
   if (!weeklyValues || weeklyValues.length === 0) return [];
   const valid = weeklyValues.filter(v => v.value !== null);
   if (valid.length === 0) return [];
-  const currentYear = new Date().getFullYear();
+  const now = new Date(); now.setHours(0, 0, 0, 0);
+  const currentYear = now.getFullYear();
   switch (period) {
-    case 'this_week':  return valid.slice(-1);
-    case 'last_week':  return valid.length >= 2 ? valid.slice(-2, -1) : valid.slice(-1);
-    case 'last_month': return valid.slice(-4);
-    case 'ytd':        return valid.filter(v => v.year === currentYear);
-    case 'last_year':  return valid.filter(v => v.year === currentYear - 1);
-    case 'all_time':   return valid;
-    default:           return valid.slice(-4);
+    case 'this_week':
+    case 'week_to_date':  return valid.slice(-1);
+    case 'last_week':     return valid.length >= 2 ? valid.slice(-2, -1) : valid.slice(-1);
+    case 'last_7_days':   return valid.slice(-1);
+    case 'last_month':    return valid.slice(-4);
+    case 'last_30_days':  return valid.slice(-4);
+    case 'last_60_days':  return valid.slice(-9);
+    case 'last_90_days':  return valid.slice(-13);
+    case 'month_to_date': return valid.filter(v => {
+      const ws = isoWeekToDate(v.year, v.week);
+      return ws.getFullYear() === currentYear && ws.getMonth() === now.getMonth();
+    });
+    case 'ytd':           return valid.filter(v => v.year === currentYear);
+    case 'last_year':     return valid.filter(v => v.year === currentYear - 1);
+    case 'all_time':      return valid;
+    default:              return valid.slice(-4);
   }
 }
+
+// Returns the equivalent prior period for period-over-period comparison
+function filterPriorPeriod(weeklyValues, period) {
+  if (!weeklyValues || weeklyValues.length === 0) return [];
+  const valid = weeklyValues.filter(v => v.value !== null);
+  if (valid.length === 0) return [];
+  const now = new Date(); now.setHours(0, 0, 0, 0);
+  const currentYear = now.getFullYear();
+  switch (period) {
+    case 'this_week':
+    case 'week_to_date':  return valid.length >= 2 ? valid.slice(-2, -1) : [];
+    case 'last_week':     return valid.length >= 3 ? valid.slice(-3, -2) : [];
+    case 'last_7_days':   return valid.length >= 2 ? valid.slice(-2, -1) : [];
+    case 'last_month':
+    case 'last_30_days':  return valid.length >= 8  ? valid.slice(-8,  -4) : [];
+    case 'last_60_days':  return valid.length >= 18 ? valid.slice(-18, -9) : [];
+    case 'last_90_days':  return valid.length >= 26 ? valid.slice(-26,-13) : [];
+    case 'month_to_date': return valid.filter(v => {
+      const ws = isoWeekToDate(v.year, v.week);
+      const prevMonth = now.getMonth() === 0 ? 11 : now.getMonth() - 1;
+      const prevYear  = now.getMonth() === 0 ? currentYear - 1 : currentYear;
+      return ws.getFullYear() === prevYear && ws.getMonth() === prevMonth;
+    });
+    case 'ytd': {
+      const n = valid.filter(v => v.year === currentYear).length;
+      return valid.filter(v => v.year === currentYear - 1).slice(0, n);
+    }
+    case 'last_year':  return valid.filter(v => v.year === currentYear - 2);
+    case 'all_time':   return [];
+    default:           return [];
+  }
+}
+
+const PERIOD_COMPARE_LABELS = {
+  'this_week':     'vs last week',
+  'week_to_date':  'vs last week',
+  'last_week':     'vs prev week',
+  'last_7_days':   'vs prev 7 days',
+  'last_month':    'vs prev month',
+  'last_30_days':  'vs prev 30 days',
+  'last_60_days':  'vs prev 60 days',
+  'last_90_days':  'vs prev 90 days',
+  'month_to_date': 'vs prev month',
+  'ytd':           'vs same period LY',
+  'last_year':     'vs prev year',
+  'all_time':      null,
+  'custom':        'vs prior period',
+};
 
 function sumValues(arr) { return arr.reduce((s, v) => s + (v.value || 0), 0); }
 
@@ -215,15 +302,17 @@ function HomeIcon() {
 
 function ChartIcon() {
   return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <line x1="18" y1="20" x2="18" y2="10"/>
-      <line x1="12" y1="20" x2="12" y2="4"/>
-      <line x1="6"  y1="20" x2="6"  y2="14"/>
-      <line x1="2"  y1="20" x2="22" y2="20"/>
-    </svg>
+    <img src="https://upload.wikimedia.org/wikipedia/commons/f/f9/Bol.com_2019_logo.svg"
+      alt="BOL" style={{ height: '14px', width: 'auto', objectFit: 'contain', display: 'block', maxWidth: '40px' }} />
   );
 }
 
+function AmazonIcon() {
+  return (
+    <img src="https://upload.wikimedia.org/wikipedia/commons/a/a9/Amazon_logo.svg"
+      alt="Amazon" style={{ height: '14px', width: 'auto', objectFit: 'contain', display: 'block', maxWidth: '50px' }} />
+  );
+}
 function BoxIcon() {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -234,9 +323,28 @@ function BoxIcon() {
   );
 }
 
+function SunIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="5"/>
+      <line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/>
+      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+      <line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
+      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+    </svg>
+  );
+}
+function MoonIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+    </svg>
+  );
+}
+
 // === SUB-COMPONENTS ===
 
-function KPICard({ title, value, prefix, suffix, change, icon, color, borderColor }) {
+function KPICard({ title, value, prefix, suffix, change, changeLabel, icon, color, borderColor, streak }) {
   const isPos = change > 0;
   const cc    = isPos ? 'text-green-600' : change < 0 ? 'text-red-600' : 'text-gray-500';
   const ci    = isPos ? '\u2191' : change < 0 ? '\u2193' : '\u2014';
@@ -249,9 +357,15 @@ function KPICard({ title, value, prefix, suffix, change, icon, color, borderColo
       <h3 className="text-2xl font-bold text-gray-900 mb-2">
         {prefix}{typeof value === 'number' ? value.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : value}{suffix}
       </h3>
-      {change !== null && change !== undefined && (
+      {change !== null && change !== undefined && changeLabel && (
         <div className={`flex items-center gap-1 text-xs font-medium ${cc}`}>
-          <span>{ci}</span><span>{Math.abs(change).toFixed(1)}% vs prev week</span>
+          <span>{ci}</span><span>{Math.abs(change).toFixed(1)}% {changeLabel}</span>
+        </div>
+      )}
+      {streak && streak.count >= 2 && (
+        <div className={`flex items-center gap-1 text-xs font-medium mt-1 ${streak.dir === 'up' ? 'text-emerald-500' : 'text-rose-400'}`}>
+          <span>{streak.dir === 'up' ? '\u2191' : '\u2193'}</span>
+          <span>{streak.count}w {streak.dir === 'up' ? 'rising' : 'falling'}</span>
         </div>
       )}
     </div>
@@ -332,6 +446,583 @@ function SectionHeading({ label }) {
   );
 }
 
+// ── Date Range Picker ────────────────────────────────────────────────────────
+
+const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+
+function CalendarMonth({ year, month, rangeStart, rangeEnd, hoverDate, onDateClick, onDateHover }) {
+  const DAYS = ['Su','Mo','Tu','We','Th','Fr','Sa'];
+  const firstDay    = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const today = new Date(); today.setHours(0,0,0,0);
+
+  const cells = [];
+  for (let i = 0; i < firstDay; i++) cells.push(null);
+  for (let d = 1; d <= daysInMonth; d++) {
+    const dt = new Date(year, month, d); dt.setHours(0,0,0,0);
+    cells.push(dt);
+  }
+
+  return (
+    <div style={{ width: '196px' }}>
+      <p className="text-center text-sm font-semibold text-gray-800 mb-2">{MONTH_NAMES[month]} {year}</p>
+      <div className="grid grid-cols-7">
+        {DAYS.map(d => <div key={d} className="text-center text-xs text-gray-400 py-1 font-medium">{d}</div>)}
+        {cells.map((date, i) => {
+          if (!date) return <div key={'p'+i} />;
+          const isFuture  = date > today;
+          const isStart   = rangeStart && date.getTime() === rangeStart.getTime();
+          const isEnd     = rangeEnd   && date.getTime() === rangeEnd.getTime();
+          const effectEnd = rangeEnd || hoverDate;
+          const inRange   = rangeStart && effectEnd && date > rangeStart && date < effectEnd;
+          const isToday   = date.getTime() === today.getTime();
+          let cls = 'text-xs text-center py-1 w-full transition rounded-full ';
+          if      (isFuture)            cls += 'text-gray-300 cursor-not-allowed';
+          else if (isStart || isEnd)    cls += 'bg-blue-600 text-white font-semibold cursor-pointer';
+          else if (inRange)             cls += 'bg-blue-100 text-blue-800 cursor-pointer';
+          else if (isToday)             cls += 'font-bold text-gray-900 hover:bg-gray-100 cursor-pointer';
+          else                          cls += 'text-gray-700 hover:bg-gray-100 cursor-pointer';
+          return (
+            <button key={i} disabled={isFuture} className={cls}
+              onClick={() => !isFuture && onDateClick(date)}
+              onMouseEnter={() => !isFuture && onDateHover(date)}
+            >{date.getDate()}</button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function DateRangePicker({ value, customRange, onChange, onCustomRange }) {
+  const [open,     setOpen]     = React.useState(false);
+  const [expanded, setExpanded] = React.useState(null);
+  const [wStart,   setWStart]   = React.useState(null); // { year, week, mon, sun }
+  const [wEnd,     setWEnd]     = React.useState(null);
+  const ref = React.useRef(null);
+
+  React.useEffect(() => {
+    if (!open) return;
+    const h = e => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, [open]);
+
+  const applyPreset = v => { onChange(v); setOpen(false); setExpanded(null); };
+
+  // Generate all ISO weeks from 2025 up to current week
+  const allWeeks = React.useMemo(() => {
+    const weeks = [];
+    const limit = new Date(); limit.setDate(limit.getDate() + 8);
+    for (let year = 2025; year <= 2027; year++) {
+      for (let week = 1; week <= 53; week++) {
+        const mon = isoWeekToDate(year, week);
+        if (mon > limit) return weeks;
+        if (mon.getFullYear() !== year) continue; // skip invalid ISO edge weeks
+        const sun = new Date(mon); sun.setDate(mon.getDate() + 6);
+        weeks.push({ year, week, mon, sun });
+      }
+    }
+    return weeks;
+  }, []);
+
+  const weeksByYear = React.useMemo(() => {
+    const map = {};
+    allWeeks.forEach(w => { if (!map[w.year]) map[w.year] = []; map[w.year].push(w); });
+    return map;
+  }, [allWeeks]);
+
+  const weekKey  = w => w ? `${w.year}-${w.week}` : '';
+  const cmpWeek  = (a, b) => !a || !b ? 0 : a.year !== b.year ? a.year - b.year : a.week - b.week;
+  const inRange  = w => wStart && wEnd && cmpWeek(w, wStart) >= 0 && cmpWeek(w, wEnd) <= 0;
+  const fmtShort = d => d.toLocaleDateString('en', { month: 'short', day: 'numeric' });
+
+  const handleWeekClick = w => {
+    if (!wStart || (wStart && wEnd)) { setWStart(w); setWEnd(null); }
+    else { cmpWeek(w, wStart) < 0 ? (setWStart(w), setWEnd(null)) : setWEnd(w); }
+  };
+
+  const handleApply = () => {
+    if (wStart && wEnd) {
+      const start = isoWeekToDate(wStart.year, wStart.week);
+      const endMon = isoWeekToDate(wEnd.year, wEnd.week);
+      const end = new Date(endMon); end.setDate(endMon.getDate() + 6);
+      onCustomRange({ start, end }); onChange('custom'); setOpen(false);
+    }
+  };
+
+  // Button label
+  const getWkInfo = d => {
+    const dt = new Date(d); dt.setHours(0,0,0,0);
+    dt.setDate(dt.getDate() + 4 - (dt.getDay() || 7));
+    const yr = dt.getFullYear();
+    return { year: yr, week: Math.ceil(((dt - new Date(yr,0,1)) / 86400000 + 1) / 7) };
+  };
+  let label = PRESET_LABELS[value] || value;
+  if (value === 'custom' && customRange) {
+    const s = getWkInfo(customRange.start), e = getWkInfo(customRange.end);
+    label = `W${s.week} \u2019${String(s.year).slice(2)} \u2013 W${e.week} \u2019${String(e.year).slice(2)}`;
+  }
+
+  const groups = [
+    { key: 'quick', items: [
+      { label: 'Last 7 days',  value: 'last_7_days'  },
+      { label: 'Last 30 days', value: 'last_30_days' },
+      { label: 'Last 60 days', value: 'last_60_days' },
+      { label: 'Last 90 days', value: 'last_90_days' },
+    ]},
+    { key: 'last', label: 'Last', items: [
+      { label: 'Last week',  value: 'last_week'  },
+      { label: 'Last month', value: 'last_month' },
+      { label: 'Last year',  value: 'last_year'  },
+    ]},
+    { key: 'ptd', label: 'Period to date', items: [
+      { label: 'Week to date',  value: 'week_to_date'  },
+      { label: 'Month to date', value: 'month_to_date' },
+      { label: 'Year to date',  value: 'ytd'           },
+    ]},
+  ];
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="flex items-center gap-2 bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm font-medium text-gray-700 shadow-sm hover:border-blue-400 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+        style={{ minWidth: '160px' }}
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ flexShrink: 0 }}>
+          <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+        </svg>
+        <span className="flex-1 text-left">{label}</span>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <polyline points="6 9 12 15 18 9"/>
+        </svg>
+      </button>
+
+      {open && (
+        <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-xl shadow-2xl z-50 flex overflow-hidden" style={{ minWidth: '580px' }}>
+
+          {/* Left — presets */}
+          <div className="w-44 border-r border-gray-100 py-2 flex-shrink-0">
+            {groups.map(group => (
+              <div key={group.key} className="mb-1">
+                {group.label ? (
+                  <>
+                    <button onClick={() => setExpanded(e => e === group.key ? null : group.key)}
+                      className="w-full flex items-center justify-between px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 font-medium">
+                      <span>{group.label}</span>
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                        <polyline points={expanded === group.key ? '18 15 12 9 6 15' : '6 9 12 15 18 9'}/>
+                      </svg>
+                    </button>
+                    {expanded === group.key && group.items.map(item => (
+                      <button key={item.value} onClick={() => applyPreset(item.value)}
+                        className={`w-full text-left px-6 py-1.5 text-sm rounded ${value === item.value ? 'text-blue-600 font-semibold' : 'text-gray-600 hover:bg-gray-50'}`}>
+                        {item.label}
+                      </button>
+                    ))}
+                  </>
+                ) : group.items.map(item => (
+                  <button key={item.value} onClick={() => applyPreset(item.value)}
+                    className={`w-full text-left px-4 py-2 text-sm ${value === item.value ? 'bg-blue-50 text-blue-600 font-semibold' : 'text-gray-700 hover:bg-gray-50'}`}>
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+            ))}
+          </div>
+
+          {/* Right — week picker */}
+          <div className="p-4 flex-1 flex flex-col" style={{ minWidth: 0 }}>
+            {/* Range display */}
+            <div className="flex items-center gap-2 mb-3">
+              <div className={`flex-1 border rounded-lg px-3 py-1.5 text-sm text-center ${wStart ? 'border-blue-400 text-gray-800 font-semibold' : 'border-gray-300 text-gray-400'}`}>
+                {wStart ? `W${wStart.week} \u2019${String(wStart.year).slice(2)}` : 'Start week'}
+              </div>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9CA3AF" strokeWidth="2" style={{ flexShrink:0 }}>
+                <line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>
+              </svg>
+              <div className={`flex-1 border rounded-lg px-3 py-1.5 text-sm text-center ${wEnd ? 'border-blue-400 text-gray-800 font-semibold' : 'border-gray-300 text-gray-400'}`}>
+                {wEnd ? `W${wEnd.week} \u2019${String(wEnd.year).slice(2)}` : 'End week'}
+              </div>
+            </div>
+
+            {/* Week grid — scrollable */}
+            <div style={{ flex: 1, overflowY: 'auto', maxHeight: '280px' }} className="pr-1">
+              {Object.keys(weeksByYear).sort().map(yr => (
+                <div key={yr} className="mb-3">
+                  <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1.5">{yr}</p>
+                  <div className="grid grid-cols-4 gap-1">
+                    {weeksByYear[yr].map(w => {
+                      const isS = weekKey(wStart) === weekKey(w);
+                      const isE = weekKey(wEnd)   === weekKey(w);
+                      const mid = inRange(w) && !isS && !isE;
+                      return (
+                        <button key={weekKey(w)} onClick={() => handleWeekClick(w)}
+                          title={`${fmtShort(w.mon)} – ${fmtShort(w.sun)}`}
+                          className={`px-1 py-1.5 rounded-lg text-center transition leading-tight ${
+                            isS || isE ? 'bg-blue-600 text-white font-semibold shadow-sm' :
+                            mid        ? 'bg-blue-50 text-blue-700' :
+                                         'text-gray-700 hover:bg-gray-100'
+                          }`}
+                        >
+                          <div className="text-xs font-semibold">W{w.week}</div>
+                          <div style={{ fontSize: '9px' }} className={isS || isE ? 'text-blue-100' : 'text-gray-400'}>
+                            {fmtShort(w.mon)}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Footer */}
+            <div className="flex items-center justify-between pt-3 mt-2 border-t border-gray-100">
+              <p className="text-xs text-gray-500">
+                {!wStart         ? 'Select a start week'  :
+                 !wEnd           ? 'Now select an end week' :
+                 `W${wStart.week} \u2013 W${wEnd.week}, ${wEnd.year}`}
+              </p>
+              <div className="flex gap-2">
+                <button onClick={() => setOpen(false)} className="px-4 py-1.5 text-sm text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50">Cancel</button>
+                <button onClick={handleApply} disabled={!wStart || !wEnd}
+                  className="px-4 py-1.5 text-sm text-white bg-gray-900 rounded-lg hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed">
+                  Apply
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Custom chart tick with flag emoji + name (horizontal charts — flag above name)
+function FlagTick({ x, y, payload }) {
+  const flag = MARKETPLACE_FLAGS[payload.value] || '';
+  return (
+    <g transform={`translate(${x},${y})`}>
+      <text x={0} y={0} dy={14} textAnchor="middle" fill="#6B7280" fontSize={11}>
+        {flag}
+      </text>
+      <text x={0} y={0} dy={26} textAnchor="middle" fill="#6B7280" fontSize={10}>
+        {payload.value}
+      </text>
+    </g>
+  );
+}
+
+// Custom chart tick with flag + name (vertical bar chart — names on Y axis)
+function FlagTickY({ x, y, payload }) {
+  const flag = MARKETPLACE_FLAGS[payload.value] || '';
+  return (
+    <g transform={`translate(${x},${y})`}>
+      <text x={-4} y={-8} textAnchor="end" fill="#6B7280" fontSize={11}>{flag}</text>
+      <text x={-4} y={6}  textAnchor="end" fill="#6B7280" fontSize={10}>{payload.value}</text>
+    </g>
+  );
+}
+
+// === SALES GLOBE COMPONENT ===
+
+const GLOBE_COUNTRIES = {
+  NL: { lat: 52.37, lng: 4.90,  name: 'Netherlands', flag: '\uD83C\uDDF3\uD83C\uDDF1' },
+  FR: { lat: 46.20, lng: 2.20,  name: 'France',      flag: '\uD83C\uDDEB\uD83C\uDDF7' },
+  DE: { lat: 51.16, lng: 10.45, name: 'Germany',     flag: '\uD83C\uDDE9\uD83C\uDDEA' },
+  IT: { lat: 41.87, lng: 12.57, name: 'Italy',       flag: '\uD83C\uDDEE\uD83C\uDDF9' },
+  ES: { lat: 40.46, lng: -3.75, name: 'Spain',       flag: '\uD83C\uDDEA\uD83C\uDDF8' },
+  BE: { lat: 50.50, lng:  4.47, name: 'Belgium',     flag: '\uD83C\uDDE7\uD83C\uDDEA' },
+};
+const GLOBE_MP_COUNTRY = {
+  'Bol': 'NL', 'AMZ - NL': 'NL', 'AMZ - FR': 'FR',
+  'AMZ - DE': 'DE', 'AMZ - IT': 'IT', 'AMZ - ES': 'ES', 'AMZ - BE': 'BE',
+};
+
+const COUNTRY_ISO = { NL: 528, FR: 250, DE: 276, IT: 380, ES: 724, BE: 56 };
+
+function SalesGlobe({ marketplaceData }) {
+  const containerRef      = React.useRef(null);
+  const globeWrapRef      = React.useRef(null);
+  const globeRef          = React.useRef(null);
+  const [globeChannel,    setGlobeChannel]    = React.useState('all');
+  const [hoveredId,       setHoveredId]       = React.useState(null);
+  const [selectedCountry, setSelectedCountry] = React.useState(null); // country code e.g. 'IT'
+
+  // Globe-visible country data (respects channel filter)
+  const countryData = React.useMemo(() => {
+    const filtered = marketplaceData.filter(m =>
+      globeChannel === 'bol' ? m.name === 'Bol' :
+      globeChannel === 'amz' ? m.name.startsWith('AMZ') : true
+    );
+    const map = {};
+    filtered.forEach(m => {
+      const code = GLOBE_MP_COUNTRY[m.name];
+      if (!code) return;
+      if (!map[code]) map[code] = { ...GLOBE_COUNTRIES[code], code, isoId: COUNTRY_ISO[code], revenue: 0, orders: 0, adSpend: 0 };
+      map[code].revenue += m.revenue;
+      map[code].orders  += m.orders;
+      map[code].adSpend += m.adSpend;
+    });
+    return Object.values(map).filter(d => d.revenue > 0);
+  }, [marketplaceData, globeChannel]);
+
+  // Full country detail for sidebar (respects channel filter + builds weekly trend)
+  const countryDetail = React.useMemo(() => {
+    if (!selectedCountry) return null;
+    let mps = marketplaceData.filter(m => GLOBE_MP_COUNTRY[m.name] === selectedCountry);
+    if (globeChannel === 'bol') mps = mps.filter(m => m.name === 'Bol');
+    else if (globeChannel === 'amz') mps = mps.filter(m => m.name.startsWith('AMZ'));
+    if (!mps.length) return null;
+    const revenue = mps.reduce((s, m) => s + m.revenue, 0);
+    const adSpend = mps.reduce((s, m) => s + m.adSpend, 0);
+    const orders  = mps.reduce((s, m) => s + m.orders,  0);
+    const units   = mps.reduce((s, m) => s + m.units,   0);
+    const sfa     = mps.reduce((s, m) => s + m.salesFromAds, 0);
+    const roas    = adSpend > 0 ? sfa / adSpend : 0;
+    const aov     = orders  > 0 ? revenue / orders : 0;
+    const adPct   = revenue > 0 ? (adSpend / revenue) * 100 : 0;
+    const parseWL = lbl => { const mx = lbl && lbl.match(/W(\d+) '(\d+)/); return mx ? { week: +mx[1], year: 2000 + +mx[2] } : { week: 0, year: 0 }; };
+    const weekMap = {};
+    mps.forEach(mp => {
+      (mp.weeklyTrend || []).forEach(w => {
+        if (!weekMap[w.weekLabel]) weekMap[w.weekLabel] = { weekLabel: w.weekLabel, revenue: 0 };
+        weekMap[w.weekLabel].revenue += w.revenue || 0;
+      });
+    });
+    const weeklyTrend = Object.values(weekMap).sort((a, b) => {
+      const pa = parseWL(a.weekLabel), pb = parseWL(b.weekLabel);
+      return pa.year !== pb.year ? pa.year - pb.year : pa.week - pb.week;
+    });
+    return { ...GLOBE_COUNTRIES[selectedCountry], code: selectedCountry, revenue, adSpend, orders, units, sfa, roas, aov, adPct, marketplaces: mps, weeklyTrend };
+  }, [selectedCountry, marketplaceData, globeChannel]);
+
+  const isoRevMap = React.useMemo(() => {
+    const m = {}; countryData.forEach(d => { if (d.isoId) m[d.isoId] = d; }); return m;
+  }, [countryData]);
+  const maxRev = React.useMemo(() => Math.max(...countryData.map(d => d.revenue), 1), [countryData]);
+
+  // Resize globe when sidebar opens/closes
+  React.useEffect(() => {
+    const t = setTimeout(() => {
+      const g = globeRef.current; const w = globeWrapRef.current;
+      if (g && w && w.offsetWidth > 50) g.width(w.offsetWidth);
+    }, 320);
+    return () => clearTimeout(t);
+  }, [selectedCountry]);
+
+  // Init globe once
+  React.useEffect(() => {
+    if (!containerRef.current || typeof Globe === 'undefined') return;
+    const w = containerRef.current.offsetWidth || 600;
+    const g = Globe()(containerRef.current)
+      .globeImageUrl('//unpkg.com/three-globe/example/img/earth-night.jpg')
+      .bumpImageUrl('//unpkg.com/three-globe/example/img/earth-topology.png')
+      .backgroundColor('rgba(0,0,0,0)')
+      .width(w).height(440);
+    g.controls().enableZoom = true; g.controls().autoRotate = true;
+    g.controls().autoRotateSpeed = 0.3; g.controls().minDistance = 115; g.controls().maxDistance = 500;
+    g.pointOfView({ lat: 52, lng: 12, altitude: 1.1 }, 0);
+    g.controls().addEventListener('start', () => { g.controls().autoRotate = false; });
+    g.controls().addEventListener('end',   () => { setTimeout(() => { if (globeRef.current) g.controls().autoRotate = true; }, 3000); });
+    g.onGlobeClick(() => setSelectedCountry(null));
+    if (typeof topojson !== 'undefined') {
+      fetch('//unpkg.com/world-atlas@2.0.2/countries-110m.json').then(r => r.json()).then(world => {
+        const features = topojson.feature(world, world.objects.countries).features;
+        g.polygonsData(features)
+          .polygonAltitude(0.006).polygonCapColor(() => 'rgba(20,40,70,0.2)')
+          .polygonSideColor(() => 'rgba(0,0,0,0)').polygonStrokeColor(() => '#1e3a5f')
+          .polygonLabel(() => '')
+          .onPolygonHover(poly => setHoveredId(poly ? +poly.id : null))
+          .onPolygonClick(poly => {
+            if (!poly) return;
+            const entry = Object.entries(COUNTRY_ISO).find(([, v]) => v === +poly.id);
+            if (entry) setSelectedCountry(c => c === entry[0] ? null : entry[0]);
+          });
+      });
+    }
+    globeRef.current = g;
+    return () => { if (containerRef.current) containerRef.current.innerHTML = ''; globeRef.current = null; };
+  }, []);
+
+  // Polygon colors — reflect hover + selected
+  React.useEffect(() => {
+    const g = globeRef.current;
+    if (!g || !g.polygonsData || !g.polygonsData().length) return;
+    g.polygonCapColor(d => {
+      const id = +d.id; const rev = isoRevMap[id];
+      const isSel = selectedCountry && COUNTRY_ISO[selectedCountry] === id;
+      if (isSel) return 'rgba(251,191,36,0.95)';
+      if (id === hoveredId) return rev ? 'rgba(251,191,36,0.85)' : 'rgba(255,255,255,0.25)';
+      if (rev) return `rgba(245,158,11,${(0.35 + (rev.revenue / maxRev) * 0.45).toFixed(2)})`;
+      return 'rgba(20,40,70,0.2)';
+    })
+    .polygonStrokeColor(d => { const id = +d.id; return (selectedCountry && COUNTRY_ISO[selectedCountry] === id) ? '#FBBF24' : id === hoveredId ? '#FCD34D' : '#1e3a5f'; })
+    .polygonAltitude(d => { const id = +d.id; return (selectedCountry && COUNTRY_ISO[selectedCountry] === id) ? 0.03 : id === hoveredId ? 0.02 : isoRevMap[id] ? 0.01 : 0.006; });
+  }, [hoveredId, isoRevMap, maxRev, selectedCountry]);
+
+  // Points + rings
+  React.useEffect(() => {
+    const g = globeRef.current;
+    if (!g) return;
+    if (countryData.length === 0) { g.ringsData([]).pointsData([]); return; }
+    const ptColor = globeChannel === 'bol' ? '#3B82F6' : globeChannel === 'amz' ? '#10B981' : '#F59E0B';
+    const mkLabel = d => `<div style="background:rgba(15,23,42,.97);border:1px solid #475569;padding:10px 14px;border-radius:8px;font-family:Inter,sans-serif;min-width:150px"><div style="font-size:13px;font-weight:700;color:#f1f5f9;margin-bottom:5px">${d.flag} ${d.name}</div><div style="font-size:11px;color:#94a3b8;margin-bottom:2px">Revenue: <span style="color:#F59E0B;font-weight:700">\u20AC${d.revenue.toLocaleString('de-DE',{minimumFractionDigits:2,maximumFractionDigits:2})}</span></div><div style="font-size:11px;color:#94a3b8;margin-bottom:2px">Orders: <span style="color:#e2e8f0;font-weight:600">${d.orders}</span></div><div style="font-size:11px;color:#94a3b8">Click to open details</div></div>`;
+    g.ringsData(countryData).ringLat('lat').ringLng('lng')
+      .ringColor(() => t => `rgba(245,158,11,${Math.max(0,1-t)})`)
+      .ringMaxRadius(d => Math.sqrt(d.revenue/maxRev)*5+1).ringPropagationSpeed(0.85).ringRepeatPeriod(1700)
+      .pointsData(countryData).pointLat('lat').pointLng('lng')
+      .pointColor(d => d.code === selectedCountry ? '#FCD34D' : ptColor)
+      .pointAltitude(d => (d.revenue/maxRev)*0.18+0.02).pointRadius(d => Math.sqrt(d.revenue/maxRev)*0.9+0.25)
+      .pointLabel(mkLabel)
+      .onPointClick(d => setSelectedCountry(c => c === d.code ? null : d.code));
+  }, [countryData, globeChannel, maxRev, selectedCountry]);
+
+  const totalRev      = countryData.reduce((s, d) => s + d.revenue, 0);
+  const hoveredC      = hoveredId ? countryData.find(d => d.isoId === hoveredId) : null;
+  const channelLabel  = globeChannel === 'bol' ? '\uD83C\uDDF3\uD83C\uDDF1 BOL' : globeChannel === 'amz' ? '\uD83D\uDECD\uFE0F AMZ' : 'All channels';
+
+  return (
+    <div className="bg-slate-900 rounded-xl shadow-sm overflow-hidden">
+
+      {/* ── Header ── */}
+      <div className="flex items-center justify-between px-5 pt-4 pb-3 flex-shrink-0">
+        <div>
+          <h3 className="text-sm font-semibold text-white">Sales by Country</h3>
+          <p className="text-xs text-slate-400 mt-0.5">
+            {selectedCountry && countryDetail
+              ? `${countryDetail.flag} ${countryDetail.name} — click X to close`
+              : hoveredC
+                ? `${hoveredC.flag} ${hoveredC.name} · \u20AC${hoveredC.revenue.toLocaleString('de-DE',{minimumFractionDigits:2,maximumFractionDigits:2})} · Click to open`
+                : 'Click a country to open details · Scroll to zoom'}
+          </p>
+        </div>
+        <div className="flex gap-1 bg-slate-800 p-1 rounded-lg">
+          {[{label:'All',value:'all'},{label:'\uD83C\uDDF3\uD83C\uDDF1 BOL',value:'bol'},{label:'\uD83D\uDECD\uFE0F AMZ',value:'amz'}].map(opt => (
+            <button key={opt.value} onClick={() => setGlobeChannel(opt.value)}
+              className={`px-3 py-1 rounded-md text-xs font-medium transition ${globeChannel===opt.value?'bg-amber-500 text-slate-900 font-semibold':'text-slate-400 hover:text-white'}`}>
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* ── Globe + Sidebar ── */}
+      <div className="flex" style={{ height: '440px' }}>
+
+        {/* Country sidebar */}
+        {selectedCountry && countryDetail && (
+          <div className="globe-sidebar bg-slate-800 border-r border-slate-700 flex flex-col flex-shrink-0 overflow-y-auto" style={{ width: '270px' }}>
+
+            {/* Sidebar header */}
+            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-700 flex-shrink-0">
+              <div className="flex items-center gap-2">
+                <img src={`https://flagcdn.com/w40/${selectedCountry.toLowerCase()}.png`} alt={countryDetail.name} style={{ width: '28px', borderRadius: '3px', boxShadow: '0 1px 4px rgba(0,0,0,0.4)', flexShrink: 0 }} />
+                <div>
+                  <p className="text-sm font-bold text-white leading-tight">{countryDetail.name}</p>
+                  <p className="text-xs text-amber-400">{channelLabel}</p>
+                </div>
+              </div>
+              <button onClick={() => setSelectedCountry(null)}
+                className="w-7 h-7 flex items-center justify-center rounded-full bg-slate-700 hover:bg-slate-600 text-slate-400 hover:text-white transition text-sm font-bold">
+                ✕
+              </button>
+            </div>
+
+            {/* KPI grid */}
+            <div className="grid grid-cols-2 gap-px bg-slate-700 border-b border-slate-700 flex-shrink-0">
+              {[
+                { label: 'Revenue',    value: '\u20AC' + countryDetail.revenue.toLocaleString('de-DE',{minimumFractionDigits:2,maximumFractionDigits:2}), color: 'text-amber-400' },
+                { label: 'Ad Spend',   value: '\u20AC' + countryDetail.adSpend.toFixed(0), color: 'text-red-400' },
+                { label: 'ROAS',       value: countryDetail.roas.toFixed(2), color: countryDetail.roas >= 1.5 ? 'text-green-400' : countryDetail.roas >= 1.0 ? 'text-amber-400' : 'text-red-400' },
+                { label: 'Orders',     value: countryDetail.orders, color: 'text-purple-400' },
+                { label: 'Units',      value: countryDetail.units,  color: 'text-indigo-400' },
+                { label: 'Avg AOV',    value: '\u20AC' + countryDetail.aov.toFixed(2), color: 'text-orange-400' },
+                { label: 'Ad Revenue', value: '\u20AC' + countryDetail.sfa.toFixed(0), color: 'text-green-400' },
+                { label: 'Ad Spend %', value: countryDetail.adPct.toFixed(1) + '%', color: 'text-blue-400' },
+              ].map((k, i) => (
+                <div key={i} className="bg-slate-800 px-3 py-2">
+                  <p className="text-xs text-slate-500 mb-0.5">{k.label}</p>
+                  <p className={`text-sm font-bold ${k.color}`}>{k.value}</p>
+                </div>
+              ))}
+            </div>
+
+            {/* Weekly trend sparkline */}
+            <div className="px-3 pt-3 pb-1 flex-shrink-0">
+              <p className="text-xs text-slate-400 mb-2 font-medium">Weekly Revenue</p>
+              {countryDetail.weeklyTrend.length > 1 ? (
+                <ResponsiveContainer width="100%" height={80}>
+                  <AreaChart data={countryDetail.weeklyTrend} margin={{ top: 2, right: 4, bottom: 0, left: 0 }}>
+                    <defs>
+                      <linearGradient id="sidebarGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%"  stopColor="#F59E0B" stopOpacity={0.4}/>
+                        <stop offset="95%" stopColor="#F59E0B" stopOpacity={0}/>
+                      </linearGradient>
+                    </defs>
+                    <XAxis dataKey="weekLabel" tick={{ fontSize: 8, fill: '#64748b' }} interval="preserveStartEnd" />
+                    <Tooltip formatter={v => `\u20AC${(+v).toLocaleString('de-DE',{minimumFractionDigits:2,maximumFractionDigits:2})}`} contentStyle={{ background:'#1e293b', border:'1px solid #334155', borderRadius:6, fontSize:11 }} labelStyle={{ color:'#94a3b8' }} />
+                    <Area animationDuration={300} type="monotone" dataKey="revenue" stroke="#F59E0B" strokeWidth={1.5} fill="url(#sidebarGrad)" />
+                  </AreaChart>
+                </ResponsiveContainer>
+              ) : (
+                <p className="text-xs text-slate-600 italic">Not enough data for trend</p>
+              )}
+            </div>
+
+            {/* Per-marketplace breakdown */}
+            {countryDetail.marketplaces.length > 1 && (
+              <div className="px-3 pt-2 pb-3 flex-shrink-0">
+                <p className="text-xs text-slate-400 mb-2 font-medium">By Marketplace</p>
+                <div className="space-y-2">
+                  {countryDetail.marketplaces.map((m, i) => (
+                    <div key={i} className="bg-slate-750 rounded-lg px-3 py-2" style={{ background: 'rgba(255,255,255,0.04)' }}>
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs font-semibold text-white flex items-center gap-1">
+                          <span className="w-2 h-2 rounded-full" style={{ backgroundColor: MARKETPLACE_COLORS[m.name] || '#6B7280' }}></span>
+                          {m.name}
+                        </span>
+                        <span className={`text-xs font-bold ${m.roas >= 1.5 ? 'text-green-400' : m.roas >= 1.0 ? 'text-amber-400' : 'text-red-400'}`}>ROAS {m.roas.toFixed(2)}</span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-x-3 text-xs text-slate-400">
+                        <span>Rev: <span className="text-amber-300 font-medium">\u20AC{m.revenue.toLocaleString('de-DE',{minimumFractionDigits:0,maximumFractionDigits:0})}</span></span>
+                        <span>Spend: <span className="text-white font-medium">\u20AC{m.adSpend.toFixed(0)}</span></span>
+                        <span>Orders: <span className="text-white font-medium">{m.orders}</span></span>
+                        <span>AOV: <span className="text-white font-medium">\u20AC{m.aov.toFixed(2)}</span></span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Globe canvas wrapper */}
+        <div ref={globeWrapRef} style={{ flex: 1, minWidth: 0, position: 'relative' }}>
+          <div ref={containerRef} style={{ width: '100%', height: '440px' }} />
+        </div>
+      </div>
+
+      {/* ── Country bar ── */}
+      {countryData.length > 0 && (
+        <div className="grid border-t border-slate-700" style={{ gridTemplateColumns: `repeat(${Math.min(countryData.length,6)},1fr)` }}>
+          {[...countryData].sort((a,b) => b.revenue - a.revenue).map((d,i) => (
+            <button key={i} onClick={() => setSelectedCountry(c => c === d.code ? null : d.code)}
+              className={`px-3 py-2 text-center border-r border-slate-700 last:border-r-0 transition hover:bg-slate-700 ${d.code === selectedCountry ? 'bg-slate-700 ring-1 ring-inset ring-amber-500' : ''}`}>
+              <p className="text-xs text-slate-400 mb-0.5 flex items-center justify-center gap-1"><img src={`https://flagcdn.com/w20/${d.code.toLowerCase()}.png`} style={{height:'10px',borderRadius:'1px'}} />{d.name}</p>
+              <p className="text-sm font-bold text-amber-400">{'\u20AC'}{d.revenue.toLocaleString('de-DE',{minimumFractionDigits:0,maximumFractionDigits:0})}</p>
+              <p className="text-xs text-slate-500">{totalRev>0?((d.revenue/totalRev)*100).toFixed(1):0}%</p>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // === MAIN DASHBOARD COMPONENT ===
 
 function EcommerceDashboard() {
@@ -342,11 +1033,20 @@ function EcommerceDashboard() {
   const [lastUpdate,       setLastUpdate]       = React.useState(null);
   const [selectedPeriod,   setSelectedPeriod]   = React.useState('last_month');
   const [activeTab,        setActiveTab]        = React.useState('home');
-  const [sidebarCollapsed, setSidebarCollapsed] = React.useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = React.useState(true);
   const [inventoryFilter,  setInventoryFilter]  = React.useState('all');
   const [tableSortKey,     setTableSortKey]     = React.useState('revenue');
   const [tableSortDir,     setTableSortDir]     = React.useState('desc');
   const [exporting,        setExporting]        = React.useState(false);
+  const [chartChannel,     setChartChannel]     = React.useState('all'); // 'all' | 'bol' | 'amz'
+  const [customRange,      setCustomRange]      = React.useState(null); // { start: Date, end: Date }
+  const [darkMode,         setDarkMode]         = React.useState(false);
+
+  React.useEffect(() => {
+    darkMode
+      ? document.documentElement.classList.add('dark-theme')
+      : document.documentElement.classList.remove('dark-theme');
+  }, [darkMode]);
 
   // --- Data Fetching ---
 
@@ -370,7 +1070,7 @@ function EcommerceDashboard() {
         fetchGviz(BOL_SHEET_ID,    '&gid='    + BOL_SCORECARD_GID, 'BOL Scorecard 2025'),
         fetchGviz(BOL_SHEET_ID,    '&sheet='  + BOL_SCORECARD_2026, 'BOL Scorecard 2026'),
         fetchGviz(BOL_SHEET_ID,    '&sheet=Product%20Listing',      'BOL Products'),
-        fetchGviz(AMAZON_SHEET_ID, '&sheet=2026',                   'Amazon Scorecard'),
+        fetchGviz(AMAZON_SHEET_ID, '&gid=1044833545',               'Amazon Scorecard'),
       ]);
 
       if (!bolScore25Rows || bolScore25Rows._error) {
@@ -444,27 +1144,31 @@ function EcommerceDashboard() {
       allMarkets[metric] = combined;
     });
 
-    const fSales    = filterByPeriod(allMarkets.totalSales    || [], selectedPeriod);
-    const fAdSpend  = filterByPeriod(allMarkets.adSpend       || [], selectedPeriod);
-    const fOrders   = filterByPeriod(allMarkets.totalOrders   || [], selectedPeriod);
-    const fUnits    = filterByPeriod(allMarkets.totalUnits    || [], selectedPeriod);
-    const fSFA      = filterByPeriod(allMarkets.salesFromAds  || [], selectedPeriod);
+    // Wrappers: use custom date range when period === 'custom'
+    const _fp  = arr => selectedPeriod === 'custom' && customRange
+      ? filterByDateRange(arr, customRange.start, customRange.end)
+      : filterByPeriod(arr, selectedPeriod);
+    const _fpp = arr => {
+      if (selectedPeriod === 'custom' && customRange) {
+        const dur = customRange.end.getTime() - customRange.start.getTime();
+        const priorEnd   = new Date(customRange.start.getTime() - 86400000);
+        const priorStart = new Date(priorEnd.getTime() - dur);
+        return filterByDateRange(arr, priorStart, priorEnd);
+      }
+      return filterPriorPeriod(arr, selectedPeriod);
+    };
 
-    const totalRevenue      = sumValues(fSales);
+    const fSales    = _fp(allMarkets.totalSales    || []);
+    const fAdSpend  = _fp(allMarkets.adSpend       || []);
+    const fOrders   = _fp(allMarkets.totalOrders   || []);
+    const fUnits    = _fp(allMarkets.totalUnits    || []);
+    const fSFA      = _fp(allMarkets.salesFromAds  || []);
+
     const totalAdSpend      = sumValues(fAdSpend);
     const totalOrders       = sumValues(fOrders);
     const totalUnits        = sumValues(fUnits);
     const totalSalesFromAds = sumValues(fSFA);
     const avgRoas           = totalAdSpend > 0 ? totalSalesFromAds / totalAdSpend : 0;
-    const avgAov            = totalOrders  > 0 ? totalRevenue / totalOrders      : 0;
-
-    const wow = (arr) => {
-      if (arr.length < 2) return null;
-      const cur = arr[arr.length - 1].value, prev = arr[arr.length - 2].value;
-      if (!prev || prev === 0) return null;
-      return ((cur - prev) / prev) * 100;
-    };
-
     const weeklyTrend = fSales.map((sale, i) => {
       const ad  = (fAdSpend[i]  && fAdSpend[i].value)  || 0;
       const ord = (fOrders[i]   && fOrders[i].value)   || 0;
@@ -484,11 +1188,11 @@ function EcommerceDashboard() {
 
     const marketplaceData = mpNames.map(name => {
       const d    = mp[name] || {};
-      const fS   = filterByPeriod(d.totalSales   || [], selectedPeriod);
-      const fA   = filterByPeriod(d.adSpend      || [], selectedPeriod);
-      const fO   = filterByPeriod(d.totalOrders  || [], selectedPeriod);
-      const fU   = filterByPeriod(d.totalUnits   || [], selectedPeriod);
-      const fSfa = filterByPeriod(d.salesFromAds || [], selectedPeriod);
+      const fS   = _fp(d.totalSales   || []);
+      const fA   = _fp(d.adSpend      || []);
+      const fO   = _fp(d.totalOrders  || []);
+      const fU   = _fp(d.totalUnits   || []);
+      const fSfa = _fp(d.salesFromAds || []);
       const rev  = sumValues(fS), ad = sumValues(fA), ord = sumValues(fO);
       const sfa  = sumValues(fSfa);
       return {
@@ -502,13 +1206,18 @@ function EcommerceDashboard() {
         organicRevenue: Math.max(0, rev - sfa),
         color:       MARKETPLACE_COLORS[name] || '#6B7280',
         weeklyTrend: fS.map(s => ({ weekLabel: s.weekLabel, revenue: s.value || 0 })),
+        // prior period for period-over-period comparison
+        priorRevenue: sumValues(_fpp(d.totalSales  || [])),
+        priorAdSpend: sumValues(_fpp(d.adSpend     || [])),
+        priorOrders:  sumValues(_fpp(d.totalOrders || [])),
+        priorUnits:   sumValues(_fpp(d.totalUnits  || [])),
       };
     });
 
     const roasTrend = fSales.map((sale, i) => {
       const entry = { weekLabel: sale.weekLabel };
       mpNames.forEach(name => {
-        const fr = filterByPeriod((mp[name] || {}).roas || [], selectedPeriod);
+        const fr = _fp((mp[name] || {}).roas || []);
         entry[name] = (fr[i] && fr[i].value) || 0;
       });
       return entry;
@@ -517,7 +1226,7 @@ function EcommerceDashboard() {
     const adSpendTrend = fSales.map((sale, i) => {
       const entry = { weekLabel: sale.weekLabel };
       mpNames.forEach(name => {
-        const fa = filterByPeriod((mp[name] || {}).adSpend || [], selectedPeriod);
+        const fa = _fp((mp[name] || {}).adSpend || []);
         entry[name] = (fa[i] && fa[i].value) || 0;
       });
       return entry;
@@ -528,18 +1237,105 @@ function EcommerceDashboard() {
     const combinedRevenue = bolRevenue + amzRevenue;
     const trueAvgAov      = totalOrders > 0 ? combinedRevenue / totalOrders : 0;
 
+    // Period-over-period comparison (consistent with how current totals are computed)
+    const bolRevenuePrior      = marketplaceData.filter(m => m.name === 'Bol').reduce((s, m) => s + m.priorRevenue, 0);
+    const amzRevenuePrior      = marketplaceData.filter(m => m.name.startsWith('AMZ')).reduce((s, m) => s + m.priorRevenue, 0);
+    const combinedRevenuePrior = bolRevenuePrior + amzRevenuePrior;
+    const totalAdSpendPrior    = marketplaceData.reduce((s, m) => s + m.priorAdSpend, 0);
+    const totalOrdersPrior     = marketplaceData.reduce((s, m) => s + m.priorOrders,  0);
+    const totalUnitsPrior      = marketplaceData.reduce((s, m) => s + m.priorUnits,   0);
+    const popChange = (cur, prior) => prior > 0 ? ((cur - prior) / prior) * 100 : null;
+    const compareLabel = selectedPeriod === 'custom' && customRange
+      ? `vs prior ${Math.round((customRange.end - customRange.start) / 86400000)} days`
+      : (PERIOD_COMPARE_LABELS[selectedPeriod] || null);
+
     return {
       totalRevenue: combinedRevenue, totalAdSpend, totalOrders, totalUnits, totalSalesFromAds, avgRoas,
       avgAov: trueAvgAov,
-      wowRevenue:  wow(fSales),
-      wowAdSpend:  wow(fAdSpend),
-      wowOrders:   wow(fOrders),
-      wowUnits:    wow(fUnits),
+      wowRevenue: popChange(combinedRevenue, combinedRevenuePrior),
+      wowAdSpend: popChange(totalAdSpend,    totalAdSpendPrior),
+      wowOrders:  popChange(totalOrders,     totalOrdersPrior),
+      wowUnits:   popChange(totalUnits,      totalUnitsPrior),
+      wowBol:     popChange(bolRevenue,      bolRevenuePrior),
+      wowAmz:     popChange(amzRevenue,      amzRevenuePrior),
+      compareLabel,
       weeklyTrend, marketplaceData, roasTrend, adSpendTrend, bolRevenue, amzRevenue, combinedRevenue,
     };
-  }, [rawData, selectedPeriod]);
+  }, [rawData, selectedPeriod, customRange]);
 
   const alertCount = bolProducts.filter(p => p.alert).length;
+
+  // --- Home tab trend (synced to global period selector) ---
+  const homeTrend = React.useMemo(() => {
+    if (!rawData) return [];
+    const { amazon, bolScore } = rawData;
+    const mp = {};
+    if (amazon    && amazon.marketplaces)   Object.keys(amazon.marketplaces).forEach(k => { mp[k] = amazon.marketplaces[k]; });
+    if (bolScore  && bolScore.marketplaces) Object.keys(bolScore.marketplaces).forEach(k => { mp[k] = bolScore.marketplaces[k]; });
+
+    const allNames    = ['Bol', 'AMZ - NL', 'AMZ - FR', 'AMZ - DE', 'AMZ - IT', 'AMZ - ES', 'AMZ - BE'];
+    const allMpNames  = allNames.filter(n => mp[n]);
+    const channelNames = chartChannel === 'bol' ? allMpNames.filter(n => n === 'Bol')
+                       : chartChannel === 'amz' ? allMpNames.filter(n => n.startsWith('AMZ'))
+                       : allMpNames;
+
+    const combinedMap = { totalSales: {}, adSpend: {} };
+    ['totalSales', 'adSpend'].forEach(function(metric) {
+      channelNames.forEach(function(name) {
+        const d = (mp[name] || {})[metric] || [];
+        d.forEach(function(e) {
+          const key = e.weekLabel;
+          if (!combinedMap[metric][key]) combinedMap[metric][key] = { weekLabel: e.weekLabel, year: e.year, week: e.week, value: 0 };
+          combinedMap[metric][key].value = (combinedMap[metric][key].value || 0) + (e.value || 0);
+        });
+      });
+    });
+    const toSortedArray = obj => Object.values(obj).sort((a, b) => a.year !== b.year ? a.year - b.year : a.week - b.week);
+    const combined = { totalSales: toSortedArray(combinedMap.totalSales), adSpend: toSortedArray(combinedMap.adSpend) };
+
+    const fp = arr => selectedPeriod === 'custom' && customRange
+      ? filterByDateRange(arr, customRange.start, customRange.end)
+      : filterByPeriod(arr, selectedPeriod);
+
+    const fS = fp(combined.totalSales || []);
+    const fA = fp(combined.adSpend    || []);
+    return fS.map((s, i) => ({
+      weekLabel: s.weekLabel,
+      revenue:   s.value || 0,
+      adSpend:   (fA[i] && fA[i].value) || 0,
+    }));
+  }, [rawData, selectedPeriod, customRange, chartChannel]);
+
+  // --- ROAS Heatmap (moved here: must be before any conditional returns) ---
+  const roasHeatmap = React.useMemo(() => {
+    if (!dashboardData) return { weeks: [], countries: [], data: {} };
+    const weeks = dashboardData.adSpendTrend.map(w => w.weekLabel);
+    const countryMpMap = {
+      NL: ['Bol', 'AMZ - NL'], FR: ['AMZ - FR'], DE: ['AMZ - DE'],
+      IT: ['AMZ - IT'],        ES: ['AMZ - ES'], BE: ['AMZ - BE'],
+    };
+    const ALL_CC = ['NL', 'FR', 'DE', 'IT', 'ES', 'BE'];
+    const adByWk = {}, roasByWk = {};
+    dashboardData.adSpendTrend.forEach(w => { adByWk[w.weekLabel]   = w; });
+    dashboardData.roasTrend.forEach(w    => { roasByWk[w.weekLabel] = w; });
+    const data = {};
+    ALL_CC.forEach(cc => {
+      data[cc] = {};
+      weeks.forEach(wl => {
+        let totalAd = 0, totalSfa = 0;
+        (countryMpMap[cc] || []).forEach(mpName => {
+          const ad   = (adByWk[wl]   && adByWk[wl][mpName])   || 0;
+          const roas = (roasByWk[wl] && roasByWk[wl][mpName]) || 0;
+          totalAd  += ad;
+          totalSfa += ad * roas;
+        });
+        data[cc][wl] = totalAd > 0 ? +(totalSfa / totalAd).toFixed(2) : null;
+      });
+    });
+    const countries = ALL_CC.filter(cc => weeks.some(wl => data[cc][wl] !== null));
+    const visWeeks = weeks.slice(-12);
+    return { weeks: visWeeks, countries, data };
+  }, [dashboardData]);
 
   // --- Table sorting ---
 
@@ -626,6 +1422,102 @@ function EcommerceDashboard() {
   const adEffData = dashboardData.marketplaceData.filter(m => m.revenue > 0).map(m => ({ name: m.name, organicRevenue: m.organicRevenue, adRevenue: m.salesFromAds }));
   const filteredProducts = inventoryFilter === 'issues' ? bolProducts.filter(p => p.alert) : bolProducts;
 
+  // BOL Analytics data
+  const bolMarket = dashboardData.marketplaceData.find(m => m.name === 'Bol') || { revenue: 0, adSpend: 0, orders: 0, units: 0, salesFromAds: 0, roas: 0, aov: 0, weeklyTrend: [] };
+  const bolAdMap = {};
+  dashboardData.adSpendTrend.forEach(w => { bolAdMap[w.weekLabel] = w['Bol'] || 0; });
+  const bolTrendData = (bolMarket.weeklyTrend || []).map(w => ({ ...w, adSpend: bolAdMap[w.weekLabel] || 0 }));
+  const bolRoasTrend = dashboardData.roasTrend.map(w => ({ weekLabel: w.weekLabel, roas: w['Bol'] || 0 })).filter(w => w.roas > 0);
+
+  // Amazon Analytics data
+  const amzMarkets = dashboardData.marketplaceData.filter(m => m.name.startsWith('AMZ'));
+  const amzRevenue = amzMarkets.reduce((s, m) => s + m.revenue, 0);
+  const amzAdSpend = amzMarkets.reduce((s, m) => s + m.adSpend, 0);
+  const amzOrders  = amzMarkets.reduce((s, m) => s + m.orders, 0);
+  const amzUnits   = amzMarkets.reduce((s, m) => s + m.units, 0);
+  const amzSFA     = amzMarkets.reduce((s, m) => s + m.salesFromAds, 0);
+  const amzRoas    = amzAdSpend > 0 ? amzSFA / amzAdSpend : 0;
+  const amzAov     = amzOrders > 0 ? amzRevenue / amzOrders : 0;
+  const amzNames   = ['AMZ - NL', 'AMZ - FR', 'AMZ - DE', 'AMZ - IT', 'AMZ - ES', 'AMZ - BE'];
+  const parseWL    = lbl => { const m = lbl && lbl.match(/W(\d+) '(\d+)/); return m ? { week: +m[1], year: 2000 + +m[2] } : { week: 0, year: 0 }; };
+  const amzRevMap  = {};
+  amzMarkets.forEach(m => { (m.weeklyTrend || []).forEach(w => { if (!amzRevMap[w.weekLabel]) amzRevMap[w.weekLabel] = { weekLabel: w.weekLabel, revenue: 0 }; amzRevMap[w.weekLabel].revenue += w.revenue || 0; }); });
+  const amzAdByWeek = {};
+  dashboardData.adSpendTrend.forEach(w => { amzAdByWeek[w.weekLabel] = amzNames.reduce((s, n) => s + (w[n] || 0), 0); });
+  const amzTrendData = Object.values(amzRevMap).sort((a, b) => { const pa = parseWL(a.weekLabel), pb = parseWL(b.weekLabel); return pa.year !== pb.year ? pa.year - pb.year : pa.week - pb.week; }).map(w => ({ ...w, adSpend: amzAdByWeek[w.weekLabel] || 0 }));
+  const amzPieData = amzMarkets.filter(m => m.revenue > 0).map(m => ({ name: m.name, value: m.revenue, color: m.color }));
+
+  // ─── Advanced Analytics computed vars ────────────────────────────────────
+
+  // 1. Consecutive streak (revenue + ROAS)
+  const streakInfo = (() => {
+    const calcStreak = (arr, key) => {
+      let count = 0, dir = null;
+      for (let i = arr.length - 1; i >= 1; i--) {
+        const d = arr[i][key] > arr[i-1][key] ? 'up' : arr[i][key] < arr[i-1][key] ? 'down' : null;
+        if (!dir) { dir = d; }
+        if (dir && d === dir) count++;
+        else break;
+      }
+      return count >= 2 ? { count, dir } : null;
+    };
+    const wt = dashboardData.weeklyTrend || [];
+    return { revenue: calcStreak(wt, 'revenue'), roas: calcStreak(wt, 'roas') };
+  })();
+
+  // 2. Profit after ads per week (from homeTrend)
+  const profitTrend = homeTrend.map(w => ({
+    weekLabel: w.weekLabel,
+    profit:    +(w.revenue - w.adSpend).toFixed(2),
+    revenue:   w.revenue,
+    margin:    w.revenue > 0 ? +((w.revenue - w.adSpend) / w.revenue * 100).toFixed(1) : 0,
+  }));
+  const totalProfit  = profitTrend.reduce((s, w) => s + w.profit, 0);
+  const avgMarginPct = profitTrend.length > 0
+    ? +(profitTrend.reduce((s, w) => s + w.margin, 0) / profitTrend.length).toFixed(1)
+    : 0;
+
+  // 3. Ad spend velocity — WoW% change of revenue vs ad spend
+  const velocityData = homeTrend.length < 2 ? [] : homeTrend.slice(1).map((w, i) => {
+    const prev = homeTrend[i];
+    return {
+      weekLabel:     w.weekLabel,
+      revenueGrowth: prev.revenue > 0 ? +((w.revenue - prev.revenue) / prev.revenue * 100).toFixed(1) : 0,
+      adSpendGrowth: prev.adSpend > 0 ? +((w.adSpend - prev.adSpend) / prev.adSpend * 100).toFixed(1) : 0,
+    };
+  });
+
+  // 4. Revenue forecast — linear regression on last 6 actual weeks, +4 projected
+  const forecastChartData = (() => {
+    if (homeTrend.length < 3) return homeTrend.map(w => ({ ...w, forecast: null }));
+    const lastN = homeTrend.slice(-6);
+    const n = lastN.length;
+    const ys = lastN.map(w => w.revenue);
+    const sumX  = (n * (n - 1)) / 2;
+    const sumY  = ys.reduce((a, b) => a + b, 0);
+    const sumXY = ys.reduce((s, y, i) => s + i * y, 0);
+    const sumXX = (n * (n - 1) * (2 * n - 1)) / 6;
+    const denom = n * sumXX - sumX * sumX;
+    const slope = denom !== 0 ? (n * sumXY - sumX * sumY) / denom : 0;
+    const intercept = (sumY - slope * sumX) / n;
+    const actual = homeTrend.map(w => ({ ...w, forecast: null }));
+    // Bridge last actual point into the forecast line
+    actual[actual.length - 1] = { ...actual[actual.length - 1], forecast: actual[actual.length - 1].revenue };
+    const last = homeTrend[homeTrend.length - 1];
+    const mw = last && last.weekLabel.match(/W(\d+) '(\d+)/);
+    let fw = mw ? +mw[1] : 1, fy = mw ? 2000 + +mw[2] : 2026;
+    const fut = [];
+    for (let i = 1; i <= 4; i++) {
+      fw++; if (fw > 52) { fw = 1; fy++; }
+      fut.push({
+        weekLabel: `W${fw} '${String(fy).slice(-2)}`,
+        revenue: null, adSpend: null,
+        forecast: Math.max(0, Math.round(intercept + slope * (n - 1 + i))),
+      });
+    }
+    return [...actual, ...fut];
+  })();
+
   // ─── RENDER ────────────────────────────────────────────────────────────────
 
   return (
@@ -635,22 +1527,28 @@ function EcommerceDashboard() {
       <aside
         className="bg-white border-r border-gray-200 flex flex-col flex-shrink-0 transition-all duration-300"
         style={{ width: sidebarCollapsed ? '56px' : '220px', overflowX: 'hidden' }}
+        onMouseEnter={() => setSidebarCollapsed(false)}
+        onMouseLeave={() => setSidebarCollapsed(true)}
       >
         {/* Logo */}
         <div
-          className={`border-b border-gray-100 flex items-center ${sidebarCollapsed ? 'justify-center py-4 px-2' : 'gap-3 px-4 py-4'}`}
+          className={`border-b border-gray-100 flex items-center ${sidebarCollapsed ? 'justify-center py-4 px-2' : 'px-4 py-4'}`}
           style={{ minHeight: '64px', flexShrink: 0 }}
         >
-          {/* HG mark: two vertical bars + horizontal crossbar */}
-          <svg width="30" height="30" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" style={{ flexShrink: 0 }}>
-            <rect x="5"  y="5" width="18" height="90" rx="3" fill="#0f172a"/>
-            <rect x="77" y="5" width="18" height="90" rx="3" fill="#0f172a"/>
-            <rect x="5"  y="41" width="90" height="18" rx="3" fill="#0f172a"/>
-          </svg>
-          {!sidebarCollapsed && (
+          {sidebarCollapsed ? (
+            /* Collapsed: HG logo mark */
+            <img src="https://hgaesthetics.com/cdn/shop/files/HG-Logo-black.png?crop=center&height=110&v=1753723090&width=210"
+              alt="HG" className="hg-logo-img" style={{ width: '32px', height: '32px', objectFit: 'contain', flexShrink: 0 }} />
+          ) : (
+            /* Expanded: actual HG Aesthetics logo */
             <div style={{ overflow: 'hidden' }}>
-              <p className="text-sm font-bold text-gray-900 leading-tight whitespace-nowrap">HG Aesthetics</p>
-              <p className="text-xs text-gray-400 whitespace-nowrap">EU Dashboard</p>
+              <img
+                src="https://hgaesthetics.com/cdn/shop/files/HG-Logo-black.png?crop=center&height=110&v=1753723090&width=210"
+                alt="HG Aesthetics"
+                className="hg-logo-img"
+                style={{ height: '36px', width: 'auto', objectFit: 'contain', display: 'block', maxWidth: '160px' }}
+              />
+              <p className="text-xs text-gray-400 whitespace-nowrap mt-0.5">EU Dashboard</p>
             </div>
           )}
         </div>
@@ -658,9 +1556,9 @@ function EcommerceDashboard() {
         {/* Nav items */}
         <nav className="flex-1 py-2">
           {[
-            { id: 'home',      label: 'Home',            Icon: HomeIcon,  badge: null },
-            { id: 'sales',     label: 'Sales Analytics', Icon: ChartIcon, badge: null },
-            { id: 'inventory', label: 'Inventory',       Icon: BoxIcon,   badge: alertCount > 0 ? alertCount : null },
+            { id: 'home', label: 'Home',             Icon: HomeIcon,   badge: null },
+            { id: 'bol',  label: 'BOL Analytics',   Icon: ChartIcon,  badge: null },
+            { id: 'amz',  label: 'Amazon Analytics', Icon: AmazonIcon, badge: null },
           ].map(({ id, label, Icon, badge }) => (
             <div key={id} className="relative">
               <button
@@ -692,21 +1590,45 @@ function EcommerceDashboard() {
           ))}
         </nav>
 
-        {/* Collapse toggle */}
-        <div className="border-t border-gray-100 p-2" style={{ flexShrink: 0 }}>
+        {/* ── Theme toggle + Account ── */}
+        <div className={`mt-auto border-t border-gray-200 ${sidebarCollapsed ? 'p-2' : 'p-3'} flex flex-col gap-2`}>
+          {/* Dark/light toggle pill */}
           <button
-            onClick={() => setSidebarCollapsed(c => !c)}
-            title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-            className="w-full flex items-center justify-center p-2 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-50 transition"
+            onClick={() => setDarkMode(d => !d)}
+            title={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}
+            style={{ display:'flex', alignItems:'center', justifyContent: sidebarCollapsed ? 'center' : 'flex-start', gap: sidebarCollapsed ? 0 : '10px', padding:'6px 8px', borderRadius:'8px', border:'none', background:'transparent', cursor:'pointer', width:'100%' }}
+            className="hover:bg-gray-100 transition-colors"
           >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              {sidebarCollapsed
-                ? <><polyline points="13 17 18 12 13 7"/><polyline points="6 17 11 12 6 7"/></>
-                : <><polyline points="11 17 6 12 11 7"/><polyline points="18 17 13 12 18 7"/></>
-              }
-            </svg>
+            <span style={{ display:'flex', alignItems:'center', background: darkMode ? '#1e3a5f' : '#f3f4f6', borderRadius:'20px', padding:'3px 5px', gap:'2px', flexShrink:0 }}>
+              <span style={{ padding:'2px 5px', borderRadius:'12px', background: !darkMode ? '#fff' : 'transparent', color: !darkMode ? '#F59E0B' : '#6B7280', display:'flex', alignItems:'center', transition:'all 0.2s' }}>
+                <SunIcon />
+              </span>
+              <span style={{ padding:'2px 5px', borderRadius:'12px', background: darkMode ? '#334155' : 'transparent', color: darkMode ? '#93C5FD' : '#6B7280', display:'flex', alignItems:'center', transition:'all 0.2s' }}>
+                <MoonIcon />
+              </span>
+            </span>
+            {!sidebarCollapsed && (
+              <span style={{ fontSize:'12px', fontWeight:500, color: darkMode ? '#CBD5E1' : '#374151', whiteSpace:'nowrap' }}>
+                {darkMode ? 'Light mode' : 'Dark mode'}
+              </span>
+            )}
           </button>
+
+          {/* Account */}
+          <div className={`flex items-center ${sidebarCollapsed ? 'justify-center' : 'gap-2 px-1'}`}>
+            <div style={{ width:'28px', height:'28px', borderRadius:'50%', background:'linear-gradient(135deg,#fce7f3,#fbcfe8)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, overflow:'hidden' }}>
+              <img src="https://hgaesthetics.com/cdn/shop/files/HG-Logo-black.png?crop=center&height=110&v=1753723090&width=210"
+                alt="HG" style={{ width:'22px', height:'22px', objectFit:'contain' }} />
+            </div>
+            {!sidebarCollapsed && (
+              <div style={{ overflow:'hidden' }}>
+                <p className="text-xs font-semibold text-gray-900 whitespace-nowrap leading-tight">HG Aesthetics</p>
+                <p className="text-xs text-gray-400 whitespace-nowrap">Admin</p>
+              </div>
+            )}
+          </div>
         </div>
+
       </aside>
 
       {/* ════════════════════════ MAIN CONTENT ════════════════════════ */}
@@ -716,18 +1638,32 @@ function EcommerceDashboard() {
         <header className="bg-white border-b border-gray-200 px-6 flex items-center justify-between flex-shrink-0" style={{ minHeight: '64px' }}>
           <div>
             <h1 className="text-base font-semibold text-gray-900">
-              {activeTab === 'home' ? 'Home' : activeTab === 'sales' ? 'Sales Analytics' : 'Inventory'}
+              {activeTab === 'home' ? 'Home' : activeTab === 'bol' ? '\uD83C\uDDF3\uD83C\uDDF1 BOL Analytics' : '\uD83D\uDECD\uFE0F Amazon Analytics'}
             </h1>
             {lastUpdate && <p className="text-xs text-gray-400">Updated {lastUpdate.toLocaleTimeString()}</p>}
           </div>
           <div className="flex items-center gap-3">
-            <select
+            {/* Live / connected indicator */}
+            {!loading && !error ? (
+              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-green-50 border border-green-200">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75" style={{ animationDuration: '2s' }}></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+                </span>
+                <span className="text-xs font-semibold text-green-700">Live</span>
+              </div>
+            ) : loading ? (
+              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-50 border border-amber-200">
+                <span className="inline-block w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
+                <span className="text-xs font-medium text-amber-700">Syncing</span>
+              </div>
+            ) : null}
+            <DateRangePicker
               value={selectedPeriod}
-              onChange={e => setSelectedPeriod(e.target.value)}
-              className="bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm font-medium text-gray-700 shadow-sm hover:border-blue-400 focus:ring-2 focus:ring-blue-500 focus:outline-none"
-            >
-              {PERIOD_OPTIONS.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
-            </select>
+              customRange={customRange}
+              onChange={setSelectedPeriod}
+              onCustomRange={setCustomRange}
+            />
             <button
               onClick={fetchData} disabled={loading}
               className="flex items-center gap-2 bg-white border border-gray-300 px-3 py-2 rounded-lg shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50 transition disabled:opacity-50"
@@ -755,18 +1691,20 @@ function EcommerceDashboard() {
               <div className="grid grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
                 <KPICard
                   title="Total Revenue" value={dashboardData.totalRevenue} prefix={'\u20AC'}
-                  change={dashboardData.wowRevenue} icon={'\u20AC'}
+                  change={dashboardData.wowRevenue} changeLabel={dashboardData.compareLabel} icon={'\u20AC'}
                   color="bg-blue-100 text-blue-600" borderColor="border-blue-500"
+                  streak={streakInfo.revenue}
                 />
                 <KPICard
                   title="Avg ROAS" value={dashboardData.avgRoas} prefix="" suffix=""
                   change={null} icon={'\uD83C\uDFAF'}
                   color={dashboardData.avgRoas >= 1.5 ? 'bg-green-100 text-green-600' : dashboardData.avgRoas >= 1.0 ? 'bg-amber-100 text-amber-600' : 'bg-red-100 text-red-600'}
                   borderColor={dashboardData.avgRoas >= 1.5 ? 'border-green-500' : dashboardData.avgRoas >= 1.0 ? 'border-amber-500' : 'border-red-500'}
+                  streak={streakInfo.roas}
                 />
                 <KPICard
                   title="Orders" value={dashboardData.totalOrders} prefix="" suffix=""
-                  change={dashboardData.wowOrders} icon={'\uD83D\uDED2'}
+                  change={dashboardData.wowOrders} changeLabel={dashboardData.compareLabel} icon={'\uD83D\uDED2'}
                   color="bg-purple-100 text-purple-600" borderColor="border-purple-500"
                 />
                 <KPICard
@@ -790,25 +1728,34 @@ function EcommerceDashboard() {
               </div>
 
               {/* Revenue split + trend */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
 
                 {/* BOL vs Amazon */}
                 <div className="bg-white rounded-xl shadow-sm p-5">
                   <h3 className="text-base font-semibold text-gray-800 mb-4">Revenue by Channel</h3>
                   <div className="space-y-4">
                     {[
-                      { label: 'BOL.com',    value: dashboardData.bolRevenue, color: '#3B82F6', flag: '\uD83C\uDDF3\uD83C\uDDF1' },
-                      { label: 'Amazon EU',  value: dashboardData.amzRevenue, color: '#F59E0B', flag: '\uD83D\uDECD\uFE0F' },
+                      { label: 'BOL.com',   value: dashboardData.bolRevenue, wow: dashboardData.wowBol, color: '#3B82F6', flag: '\uD83C\uDDF3\uD83C\uDDF1' },
+                      { label: 'Amazon EU', value: dashboardData.amzRevenue, wow: dashboardData.wowAmz, color: '#F59E0B', flag: '\uD83D\uDECD\uFE0F' },
                     ].map(ch => {
-                      const pct = dashboardData.combinedRevenue > 0 ? (ch.value / dashboardData.combinedRevenue) * 100 : 0;
+                      const pct    = dashboardData.combinedRevenue > 0 ? (ch.value / dashboardData.combinedRevenue) * 100 : 0;
+                      const isPos  = ch.wow > 0;
+                      const wowCls = isPos ? 'text-green-600' : ch.wow < 0 ? 'text-red-600' : 'text-gray-400';
                       return (
                         <div key={ch.label}>
                           <div className="flex justify-between items-center mb-1">
                             <span className="text-sm font-medium text-gray-700">{ch.flag} {ch.label}</span>
-                            <span className="text-sm font-bold text-gray-900">
-                              {'\u20AC'}{ch.value.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                              <span className="text-xs text-gray-400 ml-2">({pct.toFixed(1)}%)</span>
-                            </span>
+                            <div className="text-right">
+                              <span className="text-sm font-bold text-gray-900">
+                                {'\u20AC'}{ch.value.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                <span className="text-xs text-gray-400 ml-1">({pct.toFixed(1)}%)</span>
+                              </span>
+                              {ch.wow !== null && dashboardData.compareLabel && (
+                                <div className={`text-xs font-medium ${wowCls}`}>
+                                  {isPos ? '\u2191' : ch.wow < 0 ? '\u2193' : ''} {Math.abs(ch.wow).toFixed(1)}% {dashboardData.compareLabel}
+                                </div>
+                              )}
+                            </div>
                           </div>
                           <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
                             <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, backgroundColor: ch.color }}></div>
@@ -816,200 +1763,436 @@ function EcommerceDashboard() {
                         </div>
                       );
                     })}
-                    <div className="pt-3 border-t border-gray-100 flex justify-between">
+                    <div className="pt-3 border-t border-gray-100 flex justify-between items-center">
                       <span className="text-sm font-semibold text-gray-700">Total</span>
-                      <span className="text-sm font-bold text-gray-900">
-                        {'\u20AC'}{dashboardData.combinedRevenue.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                      </span>
+                      <div className="text-right">
+                        <span className="text-sm font-bold text-gray-900">
+                          {'\u20AC'}{dashboardData.combinedRevenue.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </span>
+                        {dashboardData.wowRevenue !== null && dashboardData.compareLabel && (
+                          <div className={`text-xs font-medium ${dashboardData.wowRevenue > 0 ? 'text-green-600' : dashboardData.wowRevenue < 0 ? 'text-red-600' : 'text-gray-400'}`}>
+                            {dashboardData.wowRevenue > 0 ? '\u2191' : dashboardData.wowRevenue < 0 ? '\u2193' : ''} {Math.abs(dashboardData.wowRevenue).toFixed(1)}% overall
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>
 
-                {/* Revenue trend */}
-                <ChartCard title="Revenue Trend" subtitle="Weekly revenue for selected period">
+                {/* Revenue + Ad Spend trend */}
+                <div className="bg-white rounded-xl shadow-sm p-5 lg:col-span-2">
+                  <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+                    <div>
+                      <h3 className="text-base font-semibold text-gray-800">Revenue &amp; Ad Spend Trend</h3>
+                      <p className="text-xs text-gray-400 mt-0.5">
+                        {chartChannel === 'all' ? '\uD83C\uDDF3\uD83C\uDDF1 BOL.com + \uD83D\uDECD\uFE0F Amazon EU combined' : chartChannel === 'bol' ? '\uD83C\uDDF3\uD83C\uDDF1 BOL.com only' : '\uD83D\uDECD\uFE0F Amazon EU only'}
+                      </p>
+                    </div>
+                    {/* Channel picker */}
+                    <div className="flex gap-1 bg-gray-100 p-1 rounded-lg">
+                      {[
+                        { label: 'All',                       value: 'all' },
+                        { label: '\uD83C\uDDF3\uD83C\uDDF1 BOL', value: 'bol' },
+                        { label: '\uD83D\uDECD\uFE0F AMZ',       value: 'amz' },
+                      ].map(opt => (
+                        <button key={opt.value} onClick={() => setChartChannel(opt.value)}
+                          className={`px-3 py-1 rounded-md text-xs font-medium transition ${chartChannel === opt.value ? 'bg-white shadow text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}>
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                   <ResponsiveContainer width="100%" height={220}>
-                    <AreaChart data={dashboardData.weeklyTrend}>
+                    <ComposedChart data={homeTrend}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
+                      <XAxis dataKey="weekLabel" tick={{ fontSize: 11 }} />
+                      <YAxis yAxisId="left"  tickFormatter={v => v >= 1000 ? `\u20AC${(v/1000).toFixed(1)}k` : `\u20AC${Math.round(v)}`} tick={{ fontSize: 11 }} />
+                      <YAxis yAxisId="right" orientation="right" tickFormatter={v => v >= 1000 ? `\u20AC${(v/1000).toFixed(1)}k` : `\u20AC${Math.round(v)}`} tick={{ fontSize: 11 }} />
+                      <Tooltip content={<EuroTooltip />} />
+                      <Legend wrapperStyle={{ fontSize: 12 }} />
+                      <Area yAxisId="left"  type="monotone" dataKey="revenue" stroke={chartChannel === 'amz' ? '#10B981' : '#3B82F6'} strokeWidth={2} fill={chartChannel === 'amz' ? '#D1FAE5' : '#DBEAFE'} name="Revenue" />
+                      <Line yAxisId="right" type="monotone" dataKey="adSpend" stroke="#F59E0B" strokeWidth={2} dot={false} name="Ad Spend" />
+                    </ComposedChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+
+              {/* 3D Sales Globe */}
+              <SalesGlobe marketplaceData={dashboardData.marketplaceData} />
+
+              {/* ══ Advanced Analytics ══ */}
+              <div className="mt-6">
+                <SectionHeading label="Advanced Analytics" />
+
+                {/* Row 1: Profit After Ads | Ad Spend Velocity */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+
+                  {/* Profit After Ads */}
+                  <div className="bg-white rounded-xl shadow-sm p-5">
+                    <div className="flex items-center justify-between mb-1">
+                      <h3 className="text-base font-semibold text-gray-800">Profit After Ads</h3>
+                      <div className="text-right">
+                        <span className={`text-lg font-bold ${totalProfit >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                          {'\u20AC'}{totalProfit.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </span>
+                        <span className="ml-2 text-xs font-medium text-gray-400">avg margin {avgMarginPct}%</span>
+                      </div>
+                    </div>
+                    <p className="text-xs text-gray-400 mb-3">Revenue minus ad spend — weekly</p>
+                    <ResponsiveContainer width="100%" height={220}>
+                      <ComposedChart data={profitTrend}>
+                        <defs>
+                          <linearGradient id="profitGrad" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%"  stopColor="#10B981" stopOpacity={0.25}/>
+                            <stop offset="95%" stopColor="#10B981" stopOpacity={0}/>
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
+                        <XAxis dataKey="weekLabel" tick={{ fontSize: 10 }} />
+                        <YAxis yAxisId="left"  tickFormatter={v => `\u20AC${Math.round(v)}`} tick={{ fontSize: 10 }} />
+                        <YAxis yAxisId="right" orientation="right" tickFormatter={v => `${v}%`} tick={{ fontSize: 10 }} domain={[0, 100]} />
+                        <Tooltip formatter={(v, name) => name === 'Margin %' ? `${v}%` : `\u20AC${(+v).toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`} contentStyle={{ background: '#fff', border: '1px solid #E5E7EB', borderRadius: 8, fontSize: 12 }} />
+                        <ReferenceLine yAxisId="left" y={0} stroke="#EF4444" strokeDasharray="3 3" />
+                        <Area animationDuration={300} yAxisId="left" type="monotone" dataKey="profit" stroke="#10B981" strokeWidth={2} fill="url(#profitGrad)" name="Profit" />
+                        <Line animationDuration={300} yAxisId="right" type="monotone" dataKey="margin" stroke="#F59E0B" strokeWidth={1.5} dot={false} strokeDasharray="4 3" name="Margin %" />
+                      </ComposedChart>
+                    </ResponsiveContainer>
+                  </div>
+
+                  {/* Ad Spend Velocity */}
+                  <div className="bg-white rounded-xl shadow-sm p-5">
+                    <div className="mb-1">
+                      <h3 className="text-base font-semibold text-gray-800">Ad Spend Velocity</h3>
+                    </div>
+                    <p className="text-xs text-gray-400 mb-3">Week-on-week growth: revenue vs ad spend — danger zone when ad spend grows faster than revenue</p>
+                    <ResponsiveContainer width="100%" height={220}>
+                      <ComposedChart data={velocityData}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
+                        <XAxis dataKey="weekLabel" tick={{ fontSize: 10 }} />
+                        <YAxis tickFormatter={v => `${v}%`} tick={{ fontSize: 10 }} />
+                        <Tooltip formatter={v => `${v}%`} contentStyle={{ background: '#fff', border: '1px solid #E5E7EB', borderRadius: 8, fontSize: 12 }} />
+                        <Legend wrapperStyle={{ fontSize: 11 }} />
+                        <ReferenceLine y={0} stroke="#9CA3AF" />
+                        <Bar animationDuration={300} dataKey="revenueGrowth" name="Revenue Growth %" fill="#3B82F6" opacity={0.75} barSize={14} />
+                        <Bar animationDuration={300} dataKey="adSpendGrowth" name="Ad Spend Growth %" fill="#F59E0B" opacity={0.75} barSize={14} />
+                      </ComposedChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+
+                {/* Row 2: Revenue Forecast */}
+                <div className="bg-white rounded-xl shadow-sm p-5 mb-4">
+                  <div className="flex items-center justify-between mb-1">
+                    <h3 className="text-base font-semibold text-gray-800">Revenue Forecast</h3>
+                    <span className="text-xs bg-indigo-50 text-indigo-600 border border-indigo-200 px-2 py-0.5 rounded-full font-medium">+4 weeks projected</span>
+                  </div>
+                  <p className="text-xs text-gray-400 mb-3">Linear trend from the last 6 actual weeks — dashed line shows projected revenue</p>
+                  <ResponsiveContainer width="100%" height={240}>
+                    <ComposedChart data={forecastChartData}>
+                      <defs>
+                        <linearGradient id="revGrad" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%"  stopColor="#3B82F6" stopOpacity={0.2}/>
+                          <stop offset="95%" stopColor="#3B82F6" stopOpacity={0}/>
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
+                      <XAxis dataKey="weekLabel" tick={{ fontSize: 10 }} />
+                      <YAxis tickFormatter={v => v >= 1000 ? `\u20AC${(v/1000).toFixed(1)}k` : `\u20AC${Math.round(v)}`} tick={{ fontSize: 10 }} />
+                      <Tooltip formatter={(v, name) => [`\u20AC${(+v).toLocaleString('de-DE', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`, name]} contentStyle={{ background: '#fff', border: '1px solid #E5E7EB', borderRadius: 8, fontSize: 12 }} />
+                      <Legend wrapperStyle={{ fontSize: 11 }} />
+                      <Area animationDuration={300} type="monotone" dataKey="revenue" stroke="#3B82F6" strokeWidth={2} fill="url(#revGrad)" name="Actual Revenue" connectNulls={false} />
+                      <Line animationDuration={300} type="monotone" dataKey="forecast" stroke="#6366F1" strokeWidth={2} strokeDasharray="6 4" dot={{ r: 3, fill: '#6366F1' }} name="Forecast" connectNulls={true} />
+                    </ComposedChart>
+                  </ResponsiveContainer>
+                </div>
+
+                {/* Row 3: ROAS Heatmap */}
+                <div className="bg-slate-900 rounded-xl shadow-sm p-5 mb-4 overflow-x-auto">
+                  <div className="mb-3">
+                    <h3 className="text-sm font-semibold text-white">ROAS Heatmap by Country</h3>
+                    <p className="text-xs text-slate-400 mt-0.5">Weekly ROAS per country — last 12 weeks</p>
+                    <div className="flex items-center gap-3 mt-2 flex-wrap">
+                      {[
+                        { label: '\u2265 2.0', bg: '#064e3b', text: '#6ee7b7' },
+                        { label: '\u2265 1.5', bg: '#14532d', text: '#86efac' },
+                        { label: '\u2265 1.0', bg: '#78350f', text: '#fcd34d' },
+                        { label: '\u2265 0.5', bg: '#7c2d12', text: '#fdba74' },
+                        { label: '< 0.5',     bg: '#450a0a', text: '#fca5a5' },
+                        { label: 'No data',   bg: '#1e293b', text: '#475569' },
+                      ].map(l => (
+                        <div key={l.label} className="flex items-center gap-1">
+                          <span style={{ width: 10, height: 10, borderRadius: 2, background: l.bg, display: 'inline-block' }}></span>
+                          <span style={{ fontSize: 10, color: '#94a3b8' }}>{l.label}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  {roasHeatmap.countries.length > 0 ? (
+                    <table style={{ borderCollapse: 'separate', borderSpacing: '3px', minWidth: '100%' }}>
+                      <thead>
+                        <tr>
+                          <th style={{ fontSize: 10, color: '#64748b', textAlign: 'left', padding: '2px 8px', minWidth: 40 }}>Country</th>
+                          {roasHeatmap.weeks.map(wl => (
+                            <th key={wl} style={{ fontSize: 9, color: '#64748b', textAlign: 'center', padding: '2px 4px', minWidth: 42 }}>{wl}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {roasHeatmap.countries.map(cc => {
+                          const heatColor = r => {
+                            if (r === null) return { bg: '#1e293b', text: '#475569' };
+                            if (r >= 2.0)  return { bg: '#064e3b', text: '#6ee7b7' };
+                            if (r >= 1.5)  return { bg: '#14532d', text: '#86efac' };
+                            if (r >= 1.0)  return { bg: '#78350f', text: '#fcd34d' };
+                            if (r >= 0.5)  return { bg: '#7c2d12', text: '#fdba74' };
+                            return { bg: '#450a0a', text: '#fca5a5' };
+                          };
+                          return (
+                            <tr key={cc}>
+                              <td style={{ fontSize: 11, color: '#e2e8f0', padding: '2px 8px', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                                <img src={`https://flagcdn.com/w20/${cc.toLowerCase()}.png`} style={{ height: '10px', borderRadius: '1px', marginRight: '4px', verticalAlign: 'middle' }} />
+                                {cc}
+                              </td>
+                              {roasHeatmap.weeks.map(wl => {
+                                const r = roasHeatmap.data[cc][wl];
+                                const { bg, text } = heatColor(r);
+                                return (
+                                  <td key={wl} title={r !== null ? `ROAS ${r}` : 'No data'}
+                                    style={{ background: bg, borderRadius: 4, textAlign: 'center', padding: '5px 4px', fontSize: 11, fontWeight: 600, color: text, cursor: 'default' }}>
+                                    {r !== null ? r.toFixed(2) : '—'}
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  ) : (
+                    <p className="text-xs text-slate-500 italic">No heatmap data available for this period.</p>
+                  )}
+                </div>
+
+              </div>
+
+            </div>
+          )}
+
+          {/* ══════════════════ BOL ANALYTICS TAB ══════════════════ */}
+          {activeTab === 'bol' && (
+            <div>
+              <SectionHeading label="\uD83C\uDDF3\uD83C\uDDF1 BOL.com Performance" />
+
+              <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4 mb-6">
+                <KPICard title="Revenue"        value={bolMarket.revenue}      prefix={'\u20AC'} change={dashboardData.wowBol} changeLabel={dashboardData.compareLabel} icon={'\u20AC'}       color="bg-blue-100 text-blue-600"    borderColor="border-blue-500" />
+                <KPICard title="Sales from Ads" value={bolMarket.salesFromAds} prefix={'\u20AC'} change={null} icon={'\uD83D\uDCB5'} color="bg-green-100 text-green-600"  borderColor="border-green-500" />
+                <KPICard title="Ad Spend"       value={bolMarket.adSpend}      prefix={'\u20AC'} change={null} icon={'\uD83D\uDCE2'} color="bg-red-100 text-red-600"     borderColor="border-red-500" />
+                <KPICard title="ROAS"           value={bolMarket.roas}         prefix=""         change={null} icon={'\uD83C\uDFAF'} color={bolMarket.roas >= 1.5 ? 'bg-green-100 text-green-600' : bolMarket.roas >= 1.0 ? 'bg-amber-100 text-amber-600' : 'bg-red-100 text-red-600'} borderColor={bolMarket.roas >= 1.5 ? 'border-green-500' : bolMarket.roas >= 1.0 ? 'border-amber-500' : 'border-red-500'} />
+                <KPICard title="Orders"         value={bolMarket.orders}       prefix="" suffix="" change={dashboardData.wowOrders} changeLabel={dashboardData.compareLabel} icon={'\uD83D\uDED2'} color="bg-purple-100 text-purple-600" borderColor="border-purple-500" />
+                <KPICard title="Units Sold"     value={bolMarket.units}        prefix="" suffix="" change={null} icon={'\uD83D\uDCE6'} color="bg-indigo-100 text-indigo-600" borderColor="border-indigo-500" />
+                <KPICard title="Avg AOV"        value={bolMarket.aov}          prefix={'\u20AC'} change={null} icon={'\uD83D\uDCB0'} color="bg-orange-100 text-orange-600" borderColor="border-orange-500" />
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 mb-4">
+                <ChartCard title="Revenue & Ad Spend Trend" fullWidth subtitle="Weekly BOL.com revenue vs ad spend">
+                  <ResponsiveContainer width="100%" height={300}>
+                    <ComposedChart data={bolTrendData}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
                       <XAxis dataKey="weekLabel" tick={{ fontSize: 11 }} />
                       <YAxis tickFormatter={v => `\u20AC${v}`} tick={{ fontSize: 11 }} />
                       <Tooltip content={<EuroTooltip />} />
-                      <Area type="monotone" dataKey="revenue" stroke="#3B82F6" strokeWidth={2} fill="#DBEAFE" name="Revenue" />
-                    </AreaChart>
+                      <Legend />
+                      <Area animationDuration={300} type="monotone" dataKey="revenue" fill="#DBEAFE" stroke="#3B82F6" strokeWidth={2} name="Revenue" />
+                      <Bar animationDuration={300} dataKey="adSpend" fill="#FCA5A5" opacity={0.7} name="Ad Spend" barSize={20} />
+                    </ComposedChart>
                   </ResponsiveContainer>
                 </ChartCard>
               </div>
 
-              {/* Top 3 marketplaces */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                {dashboardData.marketplaceData.slice(0, 3).map((m, i) => (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+                <ChartCard title="ROAS Trend" subtitle="Weekly ROAS — Target \u2265 1.5 | Breakeven \u2265 1.0">
+                  <ResponsiveContainer width="100%" height={270}>
+                    <LineChart data={bolRoasTrend}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
+                      <XAxis dataKey="weekLabel" tick={{ fontSize: 11 }} />
+                      <YAxis tick={{ fontSize: 11 }} />
+                      <Tooltip />
+                      <ReferenceLine y={1.0} stroke="#EF4444" strokeDasharray="4 4" label={{ value: 'Breakeven', position: 'right', fontSize: 10, fill: '#EF4444' }} />
+                      <ReferenceLine y={1.5} stroke="#10B981" strokeDasharray="4 4" label={{ value: 'Target', position: 'right', fontSize: 10, fill: '#10B981' }} />
+                      <Line animationDuration={300} type="monotone" dataKey="roas" stroke="#3B82F6" strokeWidth={2} dot={{ r: 3 }} name="ROAS" />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </ChartCard>
+
+                <ChartCard title="Ad Efficiency" subtitle="Organic vs ad-driven revenue">
+                  {(() => {
+                    const effPie = [
+                      { name: 'Organic Revenue', value: Math.max(0, bolMarket.revenue - bolMarket.salesFromAds), color: '#3B82F6' },
+                      { name: 'Ad Revenue',      value: bolMarket.salesFromAds, color: '#FCA5A5' },
+                    ].filter(d => d.value > 0);
+                    return (
+                      <ResponsiveContainer width="100%" height={270}>
+                        <PieChart>
+                          <Pie animationDuration={300} data={effPie} dataKey="value" nameKey="name" cx="50%" cy="50%"
+                            innerRadius={60} outerRadius={95} paddingAngle={3}
+                            label={({ name, percent }) => `${(percent * 100).toFixed(0)}%`}
+                            labelLine={{ strokeWidth: 1 }}
+                          >
+                            {effPie.map((e, i) => <Cell key={i} fill={e.color} />)}
+                          </Pie>
+                          <Tooltip formatter={v => `\u20AC${v.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`} />
+                          <Legend />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    );
+                  })()}
+                </ChartCard>
+              </div>
+
+              <SectionHeading label="Advertising Details" />
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+                <KPICard title="Ad Spend"       value={bolMarket.adSpend}      prefix={'\u20AC'} change={null} icon={'\uD83D\uDCB8'} color="bg-red-100 text-red-600"    borderColor="border-red-500" />
+                <KPICard title="Ad Revenue"     value={bolMarket.salesFromAds} prefix={'\u20AC'} change={null} icon={'\uD83D\uDCB5'} color="bg-green-100 text-green-600" borderColor="border-green-500" />
+                <KPICard title="ROAS"           value={bolMarket.roas}         prefix=""         change={null} icon={'\uD83C\uDFAF'} color={bolMarket.roas >= 1.5 ? 'bg-green-100 text-green-600' : bolMarket.roas >= 1.0 ? 'bg-amber-100 text-amber-600' : 'bg-red-100 text-red-600'} borderColor={bolMarket.roas >= 1.5 ? 'border-green-500' : bolMarket.roas >= 1.0 ? 'border-amber-500' : 'border-red-500'} />
+                <KPICard title="Ad Spend % Rev" value={bolMarket.revenue > 0 ? (bolMarket.adSpend / bolMarket.revenue * 100) : 0} prefix="" suffix="%" change={null} icon={'\uD83D\uDCCA'} color="bg-blue-100 text-blue-600" borderColor="border-blue-500" />
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 mb-6">
+                <ChartCard title="Orders & Units Trend" subtitle="Weekly order count and units sold" fullWidth>
+                  <ResponsiveContainer width="100%" height={250}>
+                    <ComposedChart data={bolTrendData}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
+                      <XAxis dataKey="weekLabel" tick={{ fontSize: 11 }} />
+                      <YAxis tick={{ fontSize: 11 }} />
+                      <Tooltip content={<EuroTooltip />} />
+                      <Legend />
+                      <Bar animationDuration={300} dataKey="orders"  fill="#8B5CF6" name="Orders" barSize={20} opacity={0.8} radius={[4,4,0,0]} />
+                      <Line dataKey="units"   stroke="#EC4899" strokeWidth={2} name="Units" dot={{ r: 3 }} type="monotone" />
+                    </ComposedChart>
+                  </ResponsiveContainer>
+                </ChartCard>
+              </div>
+            </div>
+          )}
+
+          {/* ══════════════════════ AMAZON ANALYTICS TAB ══════════════════════ */}
+          {activeTab === 'amz' && (
+            <div>
+              <SectionHeading label="\uD83D\uDECD\uFE0F Amazon EU Performance" />
+
+              <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4 mb-6">
+                <KPICard title="Revenue"        value={amzRevenue} prefix={'\u20AC'} change={dashboardData.wowAmz} changeLabel={dashboardData.compareLabel} icon={'\u20AC'}       color="bg-amber-100 text-amber-600"  borderColor="border-amber-500" />
+                <KPICard title="Sales from Ads" value={amzSFA}     prefix={'\u20AC'} change={null} icon={'\uD83D\uDCB5'} color="bg-green-100 text-green-600"  borderColor="border-green-500" />
+                <KPICard title="Ad Spend"       value={amzAdSpend} prefix={'\u20AC'} change={null} icon={'\uD83D\uDCE2'} color="bg-red-100 text-red-600"     borderColor="border-red-500" />
+                <KPICard title="ROAS"           value={amzRoas}    prefix=""         change={null} icon={'\uD83C\uDFAF'} color={amzRoas >= 1.5 ? 'bg-green-100 text-green-600' : amzRoas >= 1.0 ? 'bg-amber-100 text-amber-600' : 'bg-red-100 text-red-600'} borderColor={amzRoas >= 1.5 ? 'border-green-500' : amzRoas >= 1.0 ? 'border-amber-500' : 'border-red-500'} />
+                <KPICard title="Orders"         value={amzOrders}  prefix="" suffix="" change={null} icon={'\uD83D\uDED2'} color="bg-purple-100 text-purple-600" borderColor="border-purple-500" />
+                <KPICard title="Units Sold"     value={amzUnits}   prefix="" suffix="" change={null} icon={'\uD83D\uDCE6'} color="bg-indigo-100 text-indigo-600" borderColor="border-indigo-500" />
+                <KPICard title="Avg AOV"        value={amzAov}     prefix={'\u20AC'} change={null} icon={'\uD83D\uDCB0'} color="bg-orange-100 text-orange-600" borderColor="border-orange-500" />
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 mb-4">
+                <ChartCard title="Revenue & Ad Spend Trend" fullWidth subtitle="Weekly Amazon EU combined revenue vs ad spend">
+                  <ResponsiveContainer width="100%" height={300}>
+                    <ComposedChart data={amzTrendData}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
+                      <XAxis dataKey="weekLabel" tick={{ fontSize: 11 }} />
+                      <YAxis tickFormatter={v => `\u20AC${v}`} tick={{ fontSize: 11 }} />
+                      <Tooltip content={<EuroTooltip />} />
+                      <Legend />
+                      <Area animationDuration={300} type="monotone" dataKey="revenue" fill="#FEF3C7" stroke="#F59E0B" strokeWidth={2} name="Revenue" />
+                      <Bar animationDuration={300} dataKey="adSpend" fill="#FCA5A5" opacity={0.7} name="Ad Spend" barSize={20} />
+                    </ComposedChart>
+                  </ResponsiveContainer>
+                </ChartCard>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+                <ChartCard title="Revenue by Marketplace" subtitle="Revenue per Amazon EU country">
+                  <ResponsiveContainer width="100%" height={270}>
+                    <BarChart data={amzMarkets.filter(m => m.revenue > 0)} layout="vertical">
+                      <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
+                      <XAxis type="number" tickFormatter={v => `\u20AC${v}`} tick={{ fontSize: 11 }} />
+                      <YAxis type="category" dataKey="name" tick={<FlagTickY />} width={100} />
+                      <Tooltip content={<EuroTooltip />} />
+                      <Bar animationDuration={300} dataKey="revenue" name="Revenue" radius={[0, 4, 4, 0]}>
+                        {amzMarkets.filter(m => m.revenue > 0).map((e, i) => <Cell key={i} fill={e.color} />)}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </ChartCard>
+
+                <ChartCard title="ROAS by Marketplace" subtitle="Green \u2265 1.5 (target) | Amber \u2265 1.0 (breakeven) | Red < 1.0">
+                  <ResponsiveContainer width="100%" height={270}>
+                    <BarChart data={amzMarkets.filter(m => m.revenue > 0)} margin={{ bottom: 20 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
+                      <XAxis dataKey="name" tick={<FlagTick />} height={50} />
+                      <YAxis tick={{ fontSize: 11 }} />
+                      <Tooltip content={<EuroTooltip />} />
+                      <ReferenceLine y={1.0} stroke="#EF4444" strokeDasharray="3 3" label={{ value: 'Breakeven', position: 'right', fontSize: 10, fill: '#EF4444' }} />
+                      <ReferenceLine y={1.5} stroke="#10B981" strokeDasharray="3 3" label={{ value: 'Target', position: 'right', fontSize: 10, fill: '#10B981' }} />
+                      <Bar animationDuration={300} dataKey="roas" name="ROAS" radius={[4, 4, 0, 0]}>
+                        {amzMarkets.filter(m => m.revenue > 0).map((e, i) => <Cell key={i} fill={e.roas >= 1.5 ? '#10B981' : e.roas >= 1.0 ? '#F59E0B' : '#EF4444'} />)}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </ChartCard>
+
+                <ChartCard title="Revenue Distribution" subtitle="Share of Amazon EU revenue by country">
+                  <ResponsiveContainer width="100%" height={270}>
+                    <PieChart>
+                      <Pie animationDuration={300} data={amzPieData} dataKey="value" nameKey="name" cx="50%" cy="50%"
+                        innerRadius={55} outerRadius={95} paddingAngle={2}
+                        label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}
+                        labelLine={{ strokeWidth: 1 }}
+                      >
+                        {amzPieData.map((e, i) => <Cell key={i} fill={e.color} />)}
+                      </Pie>
+                      <Tooltip formatter={v => `\u20AC${v.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </ChartCard>
+
+                <ChartCard title="Ad Spend by Marketplace (Stacked)" subtitle="Weekly ad spend per Amazon EU country">
+                  <ResponsiveContainer width="100%" height={270}>
+                    <BarChart data={dashboardData.adSpendTrend}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
+                      <XAxis dataKey="weekLabel" tick={{ fontSize: 10 }} />
+                      <YAxis tickFormatter={v => `\u20AC${v}`} tick={{ fontSize: 11 }} />
+                      <Tooltip />
+                      <Legend />
+                      {amzNames.map(name => (
+                        <Bar animationDuration={300} key={name} dataKey={name} stackId="a" fill={MARKETPLACE_COLORS[name]} name={name} />
+                      ))}
+                    </BarChart>
+                  </ResponsiveContainer>
+                </ChartCard>
+              </div>
+
+              <SectionHeading label="Marketplace Breakdown" />
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+                {amzMarkets.map((m, i) => (
                   <div key={i} className="bg-white rounded-xl shadow-sm p-5 border-t-4" style={{ borderTopColor: m.color }}>
-                    <div className="flex items-center justify-between mb-3">
-                      <div className="flex items-center gap-2">
-                        <span className="text-lg">{MARKETPLACE_FLAGS[m.name] || ''}</span>
-                        <span className="font-semibold text-gray-800">{m.name}</span>
-                      </div>
-                      <span className={`text-xs px-2 py-1 rounded font-medium ${i === 0 ? 'bg-yellow-100 text-yellow-800' : i === 1 ? 'bg-gray-100 text-gray-700' : 'bg-orange-100 text-orange-800'}`}>
-                        #{i + 1}
+                    <div className="flex items-center gap-2 mb-3">
+                      <span className="text-lg">{MARKETPLACE_FLAGS[m.name] || ''}</span>
+                      <span className="font-semibold text-gray-800">{m.name}</span>
+                      <span className={`ml-auto text-xs px-2 py-0.5 rounded font-medium ${m.roas >= 1.5 ? 'bg-green-100 text-green-800' : m.roas >= 1.0 ? 'bg-amber-100 text-amber-800' : 'bg-red-100 text-red-800'}`}>
+                        ROAS {m.roas.toFixed(2)}
                       </span>
                     </div>
                     <p className="text-2xl font-bold mb-3" style={{ color: m.color }}>
                       {'\u20AC'}{m.revenue.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </p>
                     <div className="grid grid-cols-2 gap-2 text-xs text-gray-600">
-                      <div>ROAS: <span className={`font-medium ${m.roas >= 1.5 ? 'text-green-600' : m.roas >= 1.0 ? 'text-amber-600' : 'text-red-600'}`}>{m.roas.toFixed(2)}</span></div>
-                      <div>Orders: <span className="font-medium text-gray-800">{m.orders}</span></div>
                       <div>Ad Spend: <span className="font-medium text-gray-800">{'\u20AC'}{m.adSpend.toFixed(0)}</span></div>
+                      <div>Orders: <span className="font-medium text-gray-800">{m.orders}</span></div>
+                      <div>Units: <span className="font-medium text-gray-800">{m.units}</span></div>
                       <div>AOV: <span className="font-medium text-gray-800">{'\u20AC'}{m.aov.toFixed(2)}</span></div>
                     </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* ══════════════════ SALES ANALYTICS TAB ══════════════════ */}
-          {activeTab === 'sales' && (
-            <div>
-
-              {/* ── Overview ── */}
-              <SectionHeading label="Performance Overview" />
-
-              <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4 mb-6">
-                <KPICard title="Total Revenue"   value={dashboardData.totalRevenue}      prefix={'\u20AC'} change={dashboardData.wowRevenue}  icon={'\u20AC'}          color="bg-blue-100 text-blue-600"   borderColor="border-blue-500" />
-                <KPICard title="Sales from Ads"  value={dashboardData.totalSalesFromAds} prefix={'\u20AC'} change={null}                       icon={'\uD83D\uDCB5'}    color="bg-green-100 text-green-600"  borderColor="border-green-500" />
-                <KPICard title="Ad Spend"        value={dashboardData.totalAdSpend}      prefix={'\u20AC'} change={dashboardData.wowAdSpend}   icon={'\uD83D\uDCE2'}    color="bg-red-100 text-red-600"     borderColor="border-red-500" />
-                <KPICard title="Avg ROAS"        value={dashboardData.avgRoas}           prefix=""         change={null}                       icon={'\uD83C\uDFAF'}    color={dashboardData.avgRoas >= 1.5 ? 'bg-green-100 text-green-600' : dashboardData.avgRoas >= 1.0 ? 'bg-amber-100 text-amber-600' : 'bg-red-100 text-red-600'} borderColor={dashboardData.avgRoas >= 1.5 ? 'border-green-500' : dashboardData.avgRoas >= 1.0 ? 'border-amber-500' : 'border-red-500'} />
-                <KPICard title="Orders"          value={dashboardData.totalOrders}       prefix=""  suffix="" change={dashboardData.wowOrders}  icon={'\uD83D\uDED2'}    color="bg-purple-100 text-purple-600" borderColor="border-purple-500" />
-                <KPICard title="Units Sold"      value={dashboardData.totalUnits}        prefix=""  suffix="" change={dashboardData.wowUnits}   icon={'\uD83D\uDCE6'}    color="bg-indigo-100 text-indigo-600" borderColor="border-indigo-500" />
-                <KPICard title="Avg AOV"         value={dashboardData.avgAov}            prefix={'\u20AC'} change={null}                       icon={'\uD83D\uDCB0'}    color="bg-orange-100 text-orange-600" borderColor="border-orange-500" />
-              </div>
-
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
-                <ChartCard title="Revenue & Ad Spend Trend" fullWidth subtitle="Weekly overview of total sales vs advertising spend">
-                  <ResponsiveContainer width="100%" height={300}>
-                    <ComposedChart data={dashboardData.weeklyTrend}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
-                      <XAxis dataKey="weekLabel" tick={{ fontSize: 11 }} />
-                      <YAxis tickFormatter={v => `\u20AC${v}`} tick={{ fontSize: 11 }} />
-                      <Tooltip content={<EuroTooltip />} />
-                      <Legend />
-                      <Area type="monotone" dataKey="revenue" fill="#DBEAFE" stroke="#3B82F6" strokeWidth={2} name="Revenue" />
-                      <Bar dataKey="adSpend" fill="#FCA5A5" opacity={0.7} name="Ad Spend" barSize={20} />
-                    </ComposedChart>
-                  </ResponsiveContainer>
-                </ChartCard>
-              </div>
-
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
-                <ChartCard title="Revenue by Marketplace" subtitle="Total revenue per marketplace for selected period">
-                  <ResponsiveContainer width="100%" height={270}>
-                    <BarChart data={dashboardData.marketplaceData} layout="vertical">
-                      <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
-                      <XAxis type="number" tickFormatter={v => `\u20AC${v}`} tick={{ fontSize: 11 }} />
-                      <YAxis type="category" dataKey="name" tick={{ fontSize: 11 }} width={80} />
-                      <Tooltip content={<EuroTooltip />} />
-                      <Bar dataKey="revenue" name="Revenue" radius={[0, 4, 4, 0]}>
-                        {dashboardData.marketplaceData.map((e, i) => <Cell key={i} fill={e.color} />)}
-                      </Bar>
-                    </BarChart>
-                  </ResponsiveContainer>
-                </ChartCard>
-
-                <ChartCard title="ROAS by Marketplace" subtitle="Green >= 1.5 (target) | Amber >= 1.0 (breakeven) | Red < 1.0">
-                  <ResponsiveContainer width="100%" height={270}>
-                    <BarChart data={dashboardData.marketplaceData}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
-                      <XAxis dataKey="name" tick={{ fontSize: 10 }} />
-                      <YAxis tick={{ fontSize: 11 }} />
-                      <Tooltip content={<EuroTooltip />} />
-                      <ReferenceLine y={1.0} stroke="#EF4444" strokeDasharray="3 3" label={{ value: 'Breakeven', position: 'right', fontSize: 10, fill: '#EF4444' }} />
-                      <ReferenceLine y={1.5} stroke="#10B981" strokeDasharray="3 3" label={{ value: 'Target',    position: 'right', fontSize: 10, fill: '#10B981' }} />
-                      <Bar dataKey="roas" name="ROAS" radius={[4, 4, 0, 0]}>
-                        {dashboardData.marketplaceData.map((e, i) => <Cell key={i} fill={e.roas >= 1.5 ? '#10B981' : e.roas >= 1.0 ? '#F59E0B' : '#EF4444'} />)}
-                      </Bar>
-                    </BarChart>
-                  </ResponsiveContainer>
-                </ChartCard>
-
-                <ChartCard title="Ad Revenue vs Organic Revenue" subtitle="How much revenue is ad-driven vs organic per marketplace">
-                  <ResponsiveContainer width="100%" height={270}>
-                    <BarChart data={adEffData}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
-                      <XAxis dataKey="name" tick={{ fontSize: 10 }} />
-                      <YAxis tickFormatter={v => `\u20AC${v}`} tick={{ fontSize: 11 }} />
-                      <Tooltip content={<EuroTooltip />} />
-                      <Legend />
-                      <Bar dataKey="organicRevenue" stackId="r" fill="#3B82F6" name="Organic Revenue" />
-                      <Bar dataKey="adRevenue"      stackId="r" fill="#FCA5A5" name="Ad Revenue" radius={[4, 4, 0, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </ChartCard>
-
-                <ChartCard title="Revenue Distribution" subtitle="Share of total revenue by marketplace">
-                  <ResponsiveContainer width="100%" height={270}>
-                    <PieChart>
-                      <Pie data={pieData} dataKey="value" nameKey="name" cx="50%" cy="50%"
-                        innerRadius={55} outerRadius={95} paddingAngle={2}
-                        label={({ name, percent }) => `${name} (${(percent * 100).toFixed(0)}%)`}
-                        labelLine={{ strokeWidth: 1 }}
-                      >
-                        {pieData.map((e, i) => <Cell key={i} fill={e.color} />)}
-                      </Pie>
-                      <Tooltip formatter={v => `\u20AC${v.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`} />
-                    </PieChart>
-                  </ResponsiveContainer>
-                </ChartCard>
-              </div>
-
-              <div className="grid grid-cols-1 gap-4 mb-4">
-                <ChartCard title="Orders & Units Trend" subtitle="Weekly order count and units sold">
-                  <ResponsiveContainer width="100%" height={250}>
-                    <ComposedChart data={dashboardData.weeklyTrend}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
-                      <XAxis dataKey="weekLabel" tick={{ fontSize: 11 }} />
-                      <YAxis tick={{ fontSize: 11 }} />
-                      <Tooltip content={<EuroTooltip />} />
-                      <Legend />
-                      <Bar  dataKey="orders" fill="#8B5CF6" name="Orders" barSize={20} opacity={0.8} radius={[4, 4, 0, 0]} />
-                      <Line dataKey="units"  stroke="#EC4899" strokeWidth={2} name="Units" dot={{ r: 3 }} type="monotone" />
-                    </ComposedChart>
-                  </ResponsiveContainer>
-                </ChartCard>
-              </div>
-
-              {/* ── Marketplace breakdown ── */}
-              <SectionHeading label="Marketplace Breakdown" />
-
-              <div className="bg-white rounded-xl shadow-sm mb-6">
-                <div className="p-5 border-b border-gray-100">
-                  <h3 className="text-base font-semibold text-gray-800">Marketplace Comparison</h3>
-                  <p className="text-xs text-gray-500 mt-1">Click column headers to sort. All values for selected period.</p>
-                </div>
-                <SortableTable data={sortedTableData} columns={tableColumns} sortKey={tableSortKey} sortDir={tableSortDir} onSort={handleSort} />
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                {dashboardData.marketplaceData.map((m, i) => (
-                  <div key={i} className="bg-white rounded-xl shadow-sm p-5">
-                    <div className="flex items-center gap-3 mb-4">
-                      <span className="text-lg">{MARKETPLACE_FLAGS[m.name] || ''}</span>
-                      <span className="w-4 h-4 rounded-full" style={{ backgroundColor: m.color }}></span>
-                      <h4 className="font-semibold text-gray-800">{m.name}</h4>
-                      <span className={`ml-auto text-xs px-2 py-0.5 rounded font-medium ${m.roas >= 1.5 ? 'bg-green-100 text-green-800' : m.roas >= 1.0 ? 'bg-amber-100 text-amber-800' : 'bg-red-100 text-red-800'}`}>
-                        ROAS {m.roas.toFixed(2)}
-                      </span>
-                    </div>
-                    <div className="grid grid-cols-4 gap-3 text-center">
-                      <div><p className="text-xs text-gray-500">Revenue</p><p className="text-sm font-semibold">{'\u20AC'}{m.revenue.toFixed(0)}</p></div>
-                      <div><p className="text-xs text-gray-500">Ad Spend</p><p className="text-sm font-semibold">{'\u20AC'}{m.adSpend.toFixed(0)}</p></div>
-                      <div><p className="text-xs text-gray-500">Orders</p><p className="text-sm font-semibold">{m.orders}</p></div>
-                      <div><p className="text-xs text-gray-500">AOV</p><p className="text-sm font-semibold">{'\u20AC'}{m.aov.toFixed(2)}</p></div>
-                    </div>
                     {m.weeklyTrend.length > 1 && (
-                      <div className="mt-4">
-                        <ResponsiveContainer width="100%" height={60}>
+                      <div className="mt-3">
+                        <ResponsiveContainer width="100%" height={50}>
                           <AreaChart data={m.weeklyTrend}>
-                            <Area type="monotone" dataKey="revenue" fill={m.color} fillOpacity={0.15} stroke={m.color} strokeWidth={2} />
+                            <Area animationDuration={300} type="monotone" dataKey="revenue" fill={m.color} fillOpacity={0.15} stroke={m.color} strokeWidth={2} />
                           </AreaChart>
                         </ResponsiveContainer>
                       </div>
@@ -1018,19 +2201,9 @@ function EcommerceDashboard() {
                 ))}
               </div>
 
-              {/* ── Advertising ── */}
-              <SectionHeading label="Advertising" />
-
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-                <KPICard title="Total Ad Spend"    value={dashboardData.totalAdSpend}      prefix={'\u20AC'} change={dashboardData.wowAdSpend} icon={'\uD83D\uDCB8'} color="bg-red-100 text-red-600"     borderColor="border-red-500" />
-                <KPICard title="Ad Revenue"        value={dashboardData.totalSalesFromAds} prefix={'\u20AC'} change={null}                      icon={'\uD83D\uDCB5'} color="bg-green-100 text-green-600" borderColor="border-green-500" />
-                <KPICard title="Overall ROAS"      value={dashboardData.avgRoas}           prefix=""         change={null}                      icon={'\uD83C\uDFAF'} color={dashboardData.avgRoas >= 1.5 ? 'bg-green-100 text-green-600' : dashboardData.avgRoas >= 1.0 ? 'bg-amber-100 text-amber-600' : 'bg-red-100 text-red-600'} borderColor={dashboardData.avgRoas >= 1.5 ? 'border-green-500' : dashboardData.avgRoas >= 1.0 ? 'border-amber-500' : 'border-red-500'} />
-                <KPICard title="Ad Spend % of Rev" value={dashboardData.totalRevenue > 0 ? (dashboardData.totalAdSpend / dashboardData.totalRevenue * 100) : 0} prefix="" suffix="%" change={null} icon={'\uD83D\uDCCA'} color="bg-blue-100 text-blue-600" borderColor="border-blue-500" />
-              </div>
-
-              <div className="grid grid-cols-1 gap-4 mb-4">
-                <ChartCard title="ROAS Trend by Marketplace" subtitle="Weekly ROAS evolution per marketplace" fullWidth>
-                  <ResponsiveContainer width="100%" height={320}>
+              <div className="grid grid-cols-1 gap-4 mb-6">
+                <ChartCard title="ROAS Trend by Marketplace" subtitle="Weekly ROAS evolution per Amazon EU country" fullWidth>
+                  <ResponsiveContainer width="100%" height={300}>
                     <LineChart data={dashboardData.roasTrend}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
                       <XAxis dataKey="weekLabel" tick={{ fontSize: 11 }} />
@@ -1038,116 +2211,13 @@ function EcommerceDashboard() {
                       <Tooltip />
                       <Legend />
                       <ReferenceLine y={1.0} stroke="#EF4444" strokeDasharray="4 4" label={{ value: 'Breakeven', position: 'right', fontSize: 10, fill: '#EF4444' }} />
-                      {Object.keys(MARKETPLACE_COLORS).map(name => (
+                      {amzNames.map(name => (
                         <Line key={name} type="monotone" dataKey={name} stroke={MARKETPLACE_COLORS[name]} strokeWidth={2} dot={{ r: 2 }} connectNulls name={name} />
                       ))}
                     </LineChart>
                   </ResponsiveContainer>
                 </ChartCard>
               </div>
-
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-6">
-                <ChartCard title="Ad Spend by Marketplace (Stacked)" subtitle="Weekly ad spend contribution per marketplace">
-                  <ResponsiveContainer width="100%" height={270}>
-                    <BarChart data={dashboardData.adSpendTrend}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
-                      <XAxis dataKey="weekLabel" tick={{ fontSize: 10 }} />
-                      <YAxis tickFormatter={v => `\u20AC${v}`} tick={{ fontSize: 11 }} />
-                      <Tooltip />
-                      <Legend />
-                      {Object.keys(MARKETPLACE_COLORS).map(name => (
-                        <Bar key={name} dataKey={name} stackId="a" fill={MARKETPLACE_COLORS[name]} name={name} />
-                      ))}
-                    </BarChart>
-                  </ResponsiveContainer>
-                </ChartCard>
-
-                <ChartCard title="Revenue vs Ad Spend Trend" subtitle="Are we spending more to earn more?">
-                  <ResponsiveContainer width="100%" height={270}>
-                    <LineChart data={dashboardData.weeklyTrend}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
-                      <XAxis dataKey="weekLabel" tick={{ fontSize: 11 }} />
-                      <YAxis tickFormatter={v => `\u20AC${v}`} tick={{ fontSize: 11 }} />
-                      <Tooltip content={<EuroTooltip />} />
-                      <Legend />
-                      <Line type="monotone" dataKey="revenue" stroke="#3B82F6" strokeWidth={2} name="Revenue"  dot={{ r: 3 }} />
-                      <Line type="monotone" dataKey="adSpend" stroke="#EF4444" strokeWidth={2} name="Ad Spend" dot={{ r: 3 }} />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </ChartCard>
-              </div>
-            </div>
-          )}
-
-          {/* ══════════════════════ INVENTORY TAB ══════════════════════ */}
-          {activeTab === 'inventory' && (
-            <div>
-              <div className="flex items-center justify-between mb-6">
-                <div>
-                  <h2 className="text-lg font-semibold text-gray-800">BOL Product Listing</h2>
-                  <p className="text-sm text-gray-500 mt-1">
-                    {bolProducts.length} products total
-                    {alertCount > 0 && <span className="ml-2 text-red-600 font-medium">{'\u26A0\uFE0F'} {alertCount} need attention</span>}
-                  </p>
-                </div>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => setInventoryFilter('all')}
-                    className={`px-4 py-2 rounded-lg text-sm font-medium transition ${inventoryFilter === 'all' ? 'bg-blue-600 text-white' : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'}`}
-                  >
-                    All ({bolProducts.length})
-                  </button>
-                  <button
-                    onClick={() => setInventoryFilter('issues')}
-                    className={`px-4 py-2 rounded-lg text-sm font-medium transition ${inventoryFilter === 'issues' ? 'bg-red-600 text-white' : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50'}`}
-                  >
-                    Issues Only ({alertCount})
-                  </button>
-                </div>
-              </div>
-
-              {bolProducts.length === 0 ? (
-                <div className="bg-white rounded-xl shadow-sm p-12 text-center">
-                  <p className="text-4xl mb-3">{'\uD83D\uDCE6'}</p>
-                  <p className="text-gray-500">No product data available. Ensure the BOL Product Listing sheet is publicly accessible.</p>
-                </div>
-              ) : (
-                <div className="bg-white rounded-xl shadow-sm overflow-hidden">
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="border-b border-gray-200 bg-gray-50">
-                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Product Name</th>
-                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">SKU</th>
-                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
-                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Reason</th>
-                          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Alert</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-gray-100">
-                        {filteredProducts.map((p, i) => (
-                          <tr key={i} className={`hover:bg-gray-50 ${p.alert ? 'bg-red-50' : ''}`}>
-                            <td className="px-4 py-3 font-medium text-gray-900">{p.name}</td>
-                            <td className="px-4 py-3 text-gray-600 font-mono text-xs">{p.sku}</td>
-                            <td className="px-4 py-3">
-                              {p.status
-                                ? <span className={`px-2 py-1 rounded text-xs font-medium ${p.status.toLowerCase().includes('active') ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-700'}`}>{p.status}</span>
-                                : '—'}
-                            </td>
-                            <td className="px-4 py-3 text-gray-600 text-xs">{p.reason || '—'}</td>
-                            <td className="px-4 py-3">
-                              {p.alert
-                                ? <span className="inline-flex items-center gap-1 px-2 py-1 bg-red-100 text-red-700 rounded text-xs font-medium">{'\u26A0\uFE0F'} Critical</span>
-                                : <span className="text-green-600 text-xs">{'\u2713'} OK</span>
-                              }
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              )}
             </div>
           )}
 

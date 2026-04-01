@@ -1,0 +1,946 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AQL × HG Aesthetics — Analytics Dashboard Proposal</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Manrope:wght@300;400;500;600;700&family=Orbitron:wght@400;700&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --rose:       #C8605F;
+      --rose-dark:  #A84B4A;
+      --rose-light: #F5E6E6;
+      --rose-glow:  rgba(200,96,95,0.18);
+      --charcoal:   #1A1A1A;
+      --body:       #4A4A4A;
+      --muted:      #888;
+      --border:     rgba(200,96,95,0.15);
+      --card-bg:    #fff;
+      --bg:         #FAFAF9;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: 'Manrope', sans-serif;
+      background: var(--bg);
+      color: var(--body);
+      line-height: 1.7;
+      font-size: 15px;
+    }
+
+    /* ── HERO ── */
+    .hero {
+      background: var(--charcoal);
+      position: relative;
+      overflow: hidden;
+      padding: 100px 24px 90px;
+      text-align: center;
+    }
+
+    .hero::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(ellipse 70% 60% at 50% 30%, rgba(200,96,95,0.22) 0%, transparent 70%);
+      pointer-events: none;
+    }
+
+    .orb {
+      position: absolute;
+      border-radius: 50%;
+      filter: blur(80px);
+      opacity: 0.3;
+      animation: float 8s ease-in-out infinite;
+    }
+    .orb-1 { width: 400px; height: 400px; background: var(--rose); top: -100px; left: -80px; animation-delay: 0s; }
+    .orb-2 { width: 300px; height: 300px; background: #7B4A8C; bottom: -80px; right: -60px; animation-delay: 3s; }
+
+    @keyframes float {
+      0%, 100% { transform: translateY(0) scale(1); }
+      50% { transform: translateY(-20px) scale(1.05); }
+    }
+
+    .hero-badge {
+      display: inline-block;
+      font-family: 'Orbitron', monospace;
+      font-size: 11px;
+      letter-spacing: 3px;
+      color: var(--rose);
+      border: 1px solid var(--rose);
+      padding: 6px 16px;
+      border-radius: 4px;
+      margin-bottom: 28px;
+      text-shadow: 0 0 12px var(--rose);
+      box-shadow: 0 0 16px var(--rose-glow);
+      position: relative;
+    }
+
+    .hero h1 {
+      font-family: 'Outfit', sans-serif;
+      font-size: clamp(32px, 6vw, 56px);
+      font-weight: 800;
+      color: #fff;
+      line-height: 1.15;
+      position: relative;
+      max-width: 780px;
+      margin: 0 auto 20px;
+    }
+
+    .hero h1 span { color: var(--rose); }
+
+    .hero-sub {
+      font-size: 17px;
+      color: rgba(255,255,255,0.6);
+      max-width: 520px;
+      margin: 0 auto 48px;
+      position: relative;
+    }
+
+    .hero-meta {
+      display: flex;
+      justify-content: center;
+      gap: 40px;
+      flex-wrap: wrap;
+      position: relative;
+    }
+
+    .hero-meta-item {
+      text-align: center;
+    }
+
+    .hero-meta-item .label {
+      font-size: 11px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: rgba(255,255,255,0.4);
+      display: block;
+      margin-bottom: 4px;
+    }
+
+    .hero-meta-item .value {
+      font-family: 'Outfit', sans-serif;
+      font-size: 15px;
+      font-weight: 600;
+      color: rgba(255,255,255,0.9);
+    }
+
+    /* ── WAVE ── */
+    .wave {
+      display: block;
+      width: 100%;
+      background: var(--charcoal);
+      line-height: 0;
+    }
+    .wave svg { display: block; width: 100%; }
+
+    /* ── LAYOUT ── */
+    .container {
+      max-width: 860px;
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    section { padding: 72px 24px; }
+
+    /* ── SECTION LABEL ── */
+    .section-label {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-family: 'Orbitron', monospace;
+      font-size: 10px;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      color: var(--rose);
+      margin-bottom: 14px;
+    }
+
+    .section-label::before {
+      content: '';
+      width: 20px;
+      height: 1px;
+      background: var(--rose);
+    }
+
+    h2 {
+      font-family: 'Outfit', sans-serif;
+      font-size: clamp(26px, 4vw, 36px);
+      font-weight: 700;
+      color: var(--charcoal);
+      line-height: 1.25;
+      margin-bottom: 16px;
+    }
+
+    .lead {
+      font-size: 16px;
+      color: var(--muted);
+      max-width: 620px;
+      margin-bottom: 48px;
+    }
+
+    /* ── CARDS ── */
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 32px;
+      transition: box-shadow 0.3s, border-color 0.3s, transform 0.3s;
+    }
+
+    .card:hover {
+      box-shadow: 0 12px 40px rgba(200,96,95,0.1);
+      border-color: rgba(200,96,95,0.3);
+      transform: translateY(-2px);
+    }
+
+    .grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 20px; }
+    .grid-3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; }
+
+    /* ── KPI STAT CARDS ── */
+    .stat-card {
+      background: var(--charcoal);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 16px;
+      padding: 28px;
+      text-align: center;
+    }
+
+    .stat-card .stat-icon {
+      font-size: 28px;
+      margin-bottom: 12px;
+    }
+
+    .stat-card .stat-value {
+      font-family: 'Outfit', sans-serif;
+      font-size: 28px;
+      font-weight: 800;
+      color: var(--rose);
+      display: block;
+    }
+
+    .stat-card .stat-label {
+      font-size: 12px;
+      color: rgba(255,255,255,0.5);
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      margin-top: 4px;
+    }
+
+    /* ── FEATURE LIST ── */
+    .feature-icon {
+      width: 44px;
+      height: 44px;
+      border-radius: 10px;
+      background: var(--rose-light);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 20px;
+      flex-shrink: 0;
+      margin-bottom: 16px;
+    }
+
+    .card h3 {
+      font-family: 'Outfit', sans-serif;
+      font-size: 17px;
+      font-weight: 700;
+      color: var(--charcoal);
+      margin-bottom: 8px;
+    }
+
+    .card p {
+      font-size: 14px;
+      color: var(--muted);
+      line-height: 1.6;
+    }
+
+    /* ── CHECKLIST ── */
+    .checklist {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .checklist li {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      font-size: 14px;
+      color: var(--body);
+    }
+
+    .checklist li::before {
+      content: '✓';
+      color: var(--rose);
+      font-weight: 700;
+      font-size: 13px;
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
+
+    /* ── PRICING ── */
+    .pricing-section {
+      background: var(--charcoal);
+      color: #fff;
+    }
+
+    .pricing-section h2 { color: #fff; }
+    .pricing-section .lead { color: rgba(255,255,255,0.5); }
+    .pricing-section .section-label { color: var(--rose); }
+
+    .pricing-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 24px;
+      margin-top: 40px;
+    }
+
+    .price-card {
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 20px;
+      padding: 36px 32px;
+      position: relative;
+      transition: border-color 0.3s;
+    }
+
+    .price-card.featured {
+      border-color: var(--rose);
+      box-shadow: 0 0 40px rgba(200,96,95,0.15);
+    }
+
+    .price-card .badge {
+      position: absolute;
+      top: -12px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--rose);
+      color: #fff;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      padding: 4px 14px;
+      border-radius: 20px;
+    }
+
+    .price-card .price-label {
+      font-size: 12px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: rgba(255,255,255,0.4);
+      margin-bottom: 12px;
+    }
+
+    .price-card .price-amount {
+      font-family: 'Outfit', sans-serif;
+      font-size: 42px;
+      font-weight: 800;
+      color: #fff;
+      line-height: 1;
+    }
+
+    .price-card .price-amount span {
+      font-size: 18px;
+      font-weight: 500;
+      color: rgba(255,255,255,0.4);
+    }
+
+    .price-card .price-sub {
+      font-size: 13px;
+      color: rgba(255,255,255,0.35);
+      margin-top: 6px;
+      margin-bottom: 28px;
+    }
+
+    .price-card .price-items {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .price-card .price-items li {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      font-size: 14px;
+      color: rgba(255,255,255,0.7);
+    }
+
+    .price-card .price-items li::before {
+      content: '→';
+      color: var(--rose);
+      font-size: 13px;
+      flex-shrink: 0;
+    }
+
+    /* ── DIVIDER ── */
+    .divider {
+      height: 1px;
+      background: linear-gradient(90deg, transparent, var(--rose), transparent);
+      margin: 0 auto;
+      max-width: 600px;
+    }
+
+    /* ── PAYMENT SECTION ── */
+    .payment-box {
+      background: var(--charcoal);
+      border: 1px solid rgba(200,96,95,0.25);
+      border-radius: 20px;
+      padding: 48px 40px;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .payment-box::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(ellipse 60% 50% at 50% 0%, rgba(200,96,95,0.12) 0%, transparent 70%);
+      pointer-events: none;
+    }
+
+    .payment-box h3 {
+      font-family: 'Outfit', sans-serif;
+      font-size: 24px;
+      font-weight: 700;
+      color: #fff;
+      margin-bottom: 8px;
+      position: relative;
+    }
+
+    .payment-box .sub {
+      color: rgba(255,255,255,0.5);
+      font-size: 14px;
+      margin-bottom: 36px;
+      position: relative;
+    }
+
+    .instapay-handle {
+      font-family: 'Orbitron', monospace;
+      font-size: 22px;
+      color: var(--rose);
+      background: rgba(200,96,95,0.08);
+      border: 1px solid rgba(200,96,95,0.3);
+      border-radius: 10px;
+      padding: 14px 28px;
+      display: inline-block;
+      letter-spacing: 2px;
+      text-shadow: 0 0 20px rgba(200,96,95,0.5);
+      margin-bottom: 24px;
+      position: relative;
+    }
+
+    .qr-wrapper {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+      margin-top: 8px;
+      position: relative;
+    }
+
+    .qr-wrapper img {
+      width: 140px;
+      height: 140px;
+      border-radius: 12px;
+      border: 2px solid rgba(200,96,95,0.3);
+      padding: 8px;
+      background: #fff;
+    }
+
+    .qr-wrapper .qr-note {
+      font-size: 12px;
+      color: rgba(255,255,255,0.35);
+      letter-spacing: 1px;
+    }
+
+    .deposit-breakdown {
+      display: flex;
+      justify-content: center;
+      gap: 32px;
+      flex-wrap: wrap;
+      margin-top: 32px;
+      padding-top: 32px;
+      border-top: 1px solid rgba(255,255,255,0.07);
+      position: relative;
+    }
+
+    .deposit-item {
+      text-align: center;
+    }
+
+    .deposit-item .di-label {
+      font-size: 11px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: rgba(255,255,255,0.35);
+      display: block;
+      margin-bottom: 4px;
+    }
+
+    .deposit-item .di-value {
+      font-family: 'Outfit', sans-serif;
+      font-size: 22px;
+      font-weight: 700;
+      color: #fff;
+    }
+
+    .deposit-item .di-value.rose { color: var(--rose); }
+
+    /* ── TECH STACK ── */
+    .tech-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: var(--rose-light);
+      color: var(--rose-dark);
+      font-size: 12px;
+      font-weight: 600;
+      padding: 6px 14px;
+      border-radius: 20px;
+      border: 1px solid rgba(200,96,95,0.2);
+    }
+
+    .tech-pills {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 24px;
+    }
+
+    /* ── TIMELINE ── */
+    .timeline {
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+      position: relative;
+      padding-left: 32px;
+    }
+
+    .timeline::before {
+      content: '';
+      position: absolute;
+      left: 8px;
+      top: 0;
+      bottom: 0;
+      width: 1px;
+      background: var(--border);
+    }
+
+    .tl-item {
+      position: relative;
+      padding-bottom: 32px;
+    }
+
+    .tl-item:last-child { padding-bottom: 0; }
+
+    .tl-dot {
+      position: absolute;
+      left: -28px;
+      top: 4px;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: var(--rose);
+      border: 3px solid var(--bg);
+      box-shadow: 0 0 0 2px var(--rose);
+    }
+
+    .tl-item h4 {
+      font-family: 'Outfit', sans-serif;
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--charcoal);
+      margin-bottom: 4px;
+    }
+
+    .tl-item p {
+      font-size: 14px;
+      color: var(--muted);
+    }
+
+    /* ── FOOTER ── */
+    footer {
+      background: var(--charcoal);
+      padding: 48px 24px;
+      text-align: center;
+    }
+
+    .footer-logo {
+      font-family: 'Orbitron', monospace;
+      font-size: 13px;
+      color: var(--rose);
+      letter-spacing: 4px;
+      text-shadow: 0 0 12px var(--rose);
+      margin-bottom: 8px;
+    }
+
+    footer p {
+      font-size: 13px;
+      color: rgba(255,255,255,0.3);
+    }
+
+    footer a {
+      color: rgba(255,255,255,0.5);
+      text-decoration: none;
+    }
+
+    footer a:hover { color: var(--rose); }
+
+    .footer-links {
+      display: flex;
+      justify-content: center;
+      gap: 24px;
+      margin: 16px 0 24px;
+      flex-wrap: wrap;
+    }
+
+    /* ── TERMS ── */
+    .terms-box {
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 24px 28px;
+      font-size: 13px;
+      color: var(--muted);
+      line-height: 1.8;
+    }
+
+    .terms-box strong {
+      color: var(--charcoal);
+    }
+
+    /* ── RESPONSIVE ── */
+    @media (max-width: 600px) {
+      .hero { padding: 70px 20px 60px; }
+      section { padding: 56px 20px; }
+      .payment-box { padding: 32px 24px; }
+      .price-card { padding: 28px 24px; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- HERO -->
+  <header class="hero">
+    <div class="orb orb-1"></div>
+    <div class="orb orb-2"></div>
+    <div class="hero-badge">CONFIDENTIAL · PREPARED EXCLUSIVELY FOR HG AESTHETICS</div>
+    <h1>EU E-Commerce<br /><span>Analytics Dashboard</span></h1>
+    <p class="hero-sub">A real-time performance intelligence layer for BOL.com & Amazon EU — built and maintained by AQL.</p>
+    <div class="hero-meta">
+      <div class="hero-meta-item">
+        <span class="label">Prepared By</span>
+        <span class="value">AQL Agency</span>
+      </div>
+      <div class="hero-meta-item">
+        <span class="label">Prepared For</span>
+        <span class="value">HG Aesthetics</span>
+      </div>
+      <div class="hero-meta-item">
+        <span class="label">Date</span>
+        <span class="value">April 2026</span>
+      </div>
+      <div class="hero-meta-item">
+        <span class="label">Version</span>
+        <span class="value">1.0</span>
+      </div>
+    </div>
+  </header>
+
+  <div class="wave">
+    <svg viewBox="0 0 1440 60" preserveAspectRatio="none" height="60">
+      <path d="M0,0 C360,60 1080,60 1440,0 L1440,60 L0,60 Z" fill="#FAFAF9"/>
+    </svg>
+  </div>
+
+  <!-- OVERVIEW -->
+  <section>
+    <div class="container">
+      <div class="section-label">Overview</div>
+      <h2>Your data, decoded — in real time.</h2>
+      <p class="lead">HG Aesthetics now has a live analytics command center pulling directly from BOL.com and Amazon EU data sources — no manual exports, no spreadsheet juggling.</p>
+
+      <div class="grid-3">
+        <div class="stat-card">
+          <div class="stat-icon">📊</div>
+          <span class="stat-value">3</span>
+          <span class="stat-label">Dashboard Views</span>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon">🌍</div>
+          <span class="stat-value">6</span>
+          <span class="stat-label">Amazon EU Countries</span>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon">⚡</div>
+          <span class="stat-value">Live</span>
+          <span class="stat-label">Google Sheets Sync</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="divider"></div>
+
+  <!-- WHAT'S BUILT -->
+  <section>
+    <div class="container">
+      <div class="section-label">Deliverables</div>
+      <h2>Everything inside the dashboard.</h2>
+      <p class="lead">Three fully integrated analytics modules, each purpose-built for your EU marketplace operations.</p>
+
+      <div class="grid-2">
+
+        <div class="card">
+          <div class="feature-icon">🏠</div>
+          <h3>Home — Command Overview</h3>
+          <p>Top-line KPIs, combined revenue by channel, interactive Revenue & Ad Spend trend chart with BOL / Amazon / All toggle, and a live Top 3 Marketplace leaderboard.</p>
+        </div>
+
+        <div class="card">
+          <div class="feature-icon">🟠</div>
+          <h3>BOL Analytics</h3>
+          <p>BOL-specific KPIs, revenue trends, ROAS tracking, ad efficiency ratios, and full 2025–2026 historical continuity via merged data sheets.</p>
+        </div>
+
+        <div class="card">
+          <div class="feature-icon">🟡</div>
+          <h3>Amazon EU Analytics</h3>
+          <p>Pan-EU KPI summary with per-country drilldown across NL, FR, DE, IT, ES & BE. Includes ROAS, ad spend trends, and country-level revenue comparison.</p>
+        </div>
+
+        <div class="card">
+          <div class="feature-icon">🔍</div>
+          <h3>Smart Period Filtering</h3>
+          <p>Every view supports: This Week, Last Week, Last Month, Year to Date, Last Year, and All Time — with instant recalculation across all KPIs and charts.</p>
+        </div>
+
+        <div class="card">
+          <div class="feature-icon">📈</div>
+          <h3>Revenue & Ad Spend Trends</h3>
+          <p>Weekly trend lines for revenue and ad spend side-by-side — helping you spot campaign efficiency patterns and seasonal peaks at a glance.</p>
+        </div>
+
+        <div class="card">
+          <div class="feature-icon">🔗</div>
+          <h3>Live Google Sheets Integration</h3>
+          <p>Data pulled directly from your Google Sheets via the gviz API — no manual syncing, no exports. Updates reflect automatically when your sheets update.</p>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <div class="divider"></div>
+
+  <!-- TECH -->
+  <section style="background: #fff;">
+    <div class="container">
+      <div class="section-label">Technology</div>
+      <h2>Built light. Built fast.</h2>
+      <p class="lead">Zero build tools, zero dependencies to manage. Runs directly in the browser via CDN — meaning no Node.js, no npm, no deployment pipeline headaches.</p>
+
+      <div class="grid-2" style="margin-bottom: 32px;">
+        <div class="card">
+          <h3>Frontend</h3>
+          <ul class="checklist">
+            <li>React 18 via CDN (no build step)</li>
+            <li>Babel Standalone for JSX in-browser</li>
+            <li>Recharts for all data visualizations</li>
+            <li>Responsive layout — works on any screen</li>
+            <li>Dark-mode ready design system</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3>Data Layer</h3>
+          <ul class="checklist">
+            <li>Google Sheets gviz API integration</li>
+            <li>BOL 2025 + 2026 sheets merged automatically</li>
+            <li>Amazon combined 2025+2026 scorecard tab</li>
+            <li>Week-label based merging (no index mismatches)</li>
+            <li>Instant filter recalculation on period change</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="tech-pills">
+        <span class="tech-pill">React 18</span>
+        <span class="tech-pill">Recharts</span>
+        <span class="tech-pill">Google Sheets gviz</span>
+        <span class="tech-pill">Babel Standalone</span>
+        <span class="tech-pill">CDN-hosted</span>
+        <span class="tech-pill">Python HTTP Server</span>
+        <span class="tech-pill">BOL.com</span>
+        <span class="tech-pill">Amazon EU</span>
+        <span class="tech-pill">NL · FR · DE · IT · ES · BE</span>
+      </div>
+    </div>
+  </section>
+
+  <div class="divider"></div>
+
+  <!-- RETAINER SCOPE -->
+  <section>
+    <div class="container">
+      <div class="section-label">Monthly Retainer</div>
+      <h2>What 999 EGP/month covers.</h2>
+      <p class="lead">Your dashboard stays accurate, fast, and up to date — without you lifting a finger.</p>
+
+      <div class="grid-2">
+        <div class="card">
+          <div class="feature-icon">🛠</div>
+          <h3>Maintenance & Updates</h3>
+          <ul class="checklist" style="margin-top: 8px;">
+            <li>Sheet schema changes handled immediately</li>
+            <li>New data columns or tabs connected on request</li>
+            <li>Bug fixes with same-day turnaround</li>
+            <li>Dashboard version bumps & cache management</li>
+          </ul>
+        </div>
+        <div class="card">
+          <div class="feature-icon">🚀</div>
+          <h3>Continuous Improvements</h3>
+          <ul class="checklist" style="margin-top: 8px;">
+            <li>Up to 2 new metric / chart requests per month</li>
+            <li>Filter or period logic adjustments</li>
+            <li>UI polish and mobile responsiveness fixes</li>
+            <li>Priority WhatsApp support</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- PRICING -->
+  <section class="pricing-section">
+    <div class="container">
+      <div class="section-label">Investment</div>
+      <h2>Simple, transparent pricing.</h2>
+      <p class="lead">One setup fee. One ongoing monthly commitment. No surprises.</p>
+
+      <div class="pricing-grid">
+
+        <div class="price-card">
+          <div class="price-label">One-Time Setup</div>
+          <div class="price-amount">6,000 <span>EGP</span></div>
+          <div class="price-sub">Paid once at project start</div>
+          <ul class="price-items">
+            <li>Full dashboard build & configuration</li>
+            <li>BOL + Amazon EU data integration</li>
+            <li>All 3 analytics views delivered</li>
+            <li>Period filtering across all KPIs</li>
+            <li>Source code & deployment setup</li>
+            <li>Handover documentation</li>
+          </ul>
+        </div>
+
+        <div class="price-card featured">
+          <div class="badge">Monthly Retainer</div>
+          <div class="price-label">Ongoing</div>
+          <div class="price-amount">999 <span>EGP / mo</span></div>
+          <div class="price-sub">Billed monthly · cancel anytime</div>
+          <ul class="price-items">
+            <li>Dashboard maintenance & upkeep</li>
+            <li>Data schema change management</li>
+            <li>Up to 2 new features / charts per month</li>
+            <li>Bug fixes — same-day response</li>
+            <li>WhatsApp priority support</li>
+            <li>Monthly performance check-in</li>
+          </ul>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <div class="wave" style="background: var(--charcoal);">
+    <svg viewBox="0 0 1440 60" preserveAspectRatio="none" height="60">
+      <path d="M0,60 C360,0 1080,0 1440,60 L1440,0 L0,0 Z" fill="#FAFAF9"/>
+    </svg>
+  </div>
+
+  <!-- PAYMENT -->
+  <section>
+    <div class="container">
+      <div class="section-label">Payment</div>
+      <h2>How to get started.</h2>
+      <p class="lead">Send the setup fee via InstaPay and we'll lock in your start date immediately.</p>
+
+      <div class="payment-box">
+        <h3>Pay via InstaPay</h3>
+        <p class="sub">Instant transfer · available 24/7 · all Egyptian banks supported</p>
+
+        <div class="instapay-handle">aql.ai@instapay</div>
+
+        <div class="qr-wrapper">
+          <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=https://ipn.eg/S/aql.ai/instapay/0Q6lpa" alt="InstaPay QR Code" />
+          <span class="qr-note">Scan to open in InstaPay app</span>
+        </div>
+
+        <div class="deposit-breakdown">
+          <div class="deposit-item">
+            <span class="di-label">Setup Fee</span>
+            <span class="di-value rose">6,000 EGP</span>
+          </div>
+          <div class="deposit-item">
+            <span class="di-label">First Month Retainer</span>
+            <span class="di-value">999 EGP</span>
+          </div>
+          <div class="deposit-item">
+            <span class="di-label">Total to Start</span>
+            <span class="di-value">6,999 EGP</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="divider"></div>
+
+  <!-- TERMS -->
+  <section>
+    <div class="container">
+      <div class="section-label">Terms</div>
+      <h2>Clear expectations, both ways.</h2>
+      <p class="lead">No fine print. Just a fair working relationship.</p>
+
+      <div class="terms-box">
+        <p><strong>Setup Fee:</strong> The 6,000 EGP project fee is due before work begins and covers the full build, integration, and deployment of the dashboard.</p>
+        <br />
+        <p><strong>Monthly Retainer:</strong> 999 EGP/month, billed on the same date each month. The retainer begins the month after the setup fee is received.</p>
+        <br />
+        <p><strong>Cancellation:</strong> Cancel the retainer anytime with 7 days notice. No lock-in period. The dashboard and all source code remain yours.</p>
+        <br />
+        <p><strong>Scope Changes:</strong> Major new modules (e.g., a fully new marketplace or analytics tab) beyond 2 requests/month may be quoted separately. We'll always discuss before billing anything extra.</p>
+        <br />
+        <p><strong>Data Access:</strong> The client maintains ownership of all data sources (Google Sheets). AQL requires read access to those sheets to build and maintain the integration.</p>
+        <br />
+        <p><strong>Confidentiality:</strong> This proposal is prepared exclusively for HG Aesthetics and is confidential. All rights reserved. © 2026 AQL.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- FOOTER -->
+  <footer>
+    <div class="footer-logo">[ AQL ]</div>
+    <div class="footer-links">
+      <a href="mailto:hello@aql.agency">hello@aql.agency</a>
+      <a href="https://www.aql.agency">www.aql.agency</a>
+      <a href="https://wa.me/message/aql">WhatsApp</a>
+    </div>
+    <p>Available Worldwide · Remote-First · © 2026 AQL. All rights reserved.</p>
+    <p style="margin-top: 8px;">Confidential — prepared exclusively for HG Aesthetics.</p>
+  </footer>
+
+</body>
+</html>
