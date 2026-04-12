@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>AQL × HG Aesthetics — Analytics Dashboard Proposal</title>
+  <title>AQL × HG Aesthetics — Analytics Dashboard Proposal v2.0</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Manrope:wght@300;400;500;600;700&family=Orbitron:wght@400;700&display=swap" rel="stylesheet" />
@@ -78,6 +78,22 @@
       text-shadow: 0 0 12px var(--rose);
       box-shadow: 0 0 16px var(--rose-glow);
       position: relative;
+    }
+
+    .version-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: rgba(200,96,95,0.15);
+      border: 1px solid rgba(200,96,95,0.4);
+      border-radius: 20px;
+      padding: 4px 14px;
+      font-family: 'Orbitron', monospace;
+      font-size: 10px;
+      letter-spacing: 2px;
+      color: var(--rose);
+      margin-left: 12px;
+      vertical-align: middle;
     }
 
     .hero h1 {
@@ -198,6 +214,26 @@
       transform: translateY(-2px);
     }
 
+    .card.new-feature {
+      border-color: rgba(200,96,95,0.35);
+      background: linear-gradient(135deg, #fff 0%, #FFF5F5 100%);
+      position: relative;
+    }
+
+    .new-tag {
+      position: absolute;
+      top: 16px;
+      right: 16px;
+      background: var(--rose);
+      color: #fff;
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      padding: 3px 10px;
+      border-radius: 20px;
+    }
+
     .grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 20px; }
     .grid-3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; }
 
@@ -282,6 +318,79 @@
       font-size: 13px;
       flex-shrink: 0;
       margin-top: 2px;
+    }
+
+    /* ── WHAT'S NEW BANNER ── */
+    .whats-new-section {
+      background: linear-gradient(135deg, #1A1A1A 0%, #2D1515 100%);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .whats-new-section::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(ellipse 60% 80% at 10% 50%, rgba(200,96,95,0.15) 0%, transparent 60%);
+      pointer-events: none;
+    }
+
+    .whats-new-section h2 { color: #fff; }
+    .whats-new-section .lead { color: rgba(255,255,255,0.5); }
+    .whats-new-section .section-label { color: var(--rose); }
+
+    .new-feature-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 16px;
+    }
+
+    .new-feature-card {
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(200,96,95,0.25);
+      border-radius: 14px;
+      padding: 24px;
+      position: relative;
+      transition: border-color 0.3s, background 0.3s;
+    }
+
+    .new-feature-card:hover {
+      border-color: rgba(200,96,95,0.5);
+      background: rgba(200,96,95,0.06);
+    }
+
+    .new-feature-card .nf-icon {
+      font-size: 26px;
+      margin-bottom: 12px;
+      display: block;
+    }
+
+    .new-feature-card h4 {
+      font-family: 'Outfit', sans-serif;
+      font-size: 15px;
+      font-weight: 700;
+      color: #fff;
+      margin-bottom: 6px;
+    }
+
+    .new-feature-card p {
+      font-size: 13px;
+      color: rgba(255,255,255,0.5);
+      line-height: 1.6;
+    }
+
+    .new-feature-card .nf-badge {
+      position: absolute;
+      top: 14px;
+      right: 14px;
+      background: var(--rose);
+      color: #fff;
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      padding: 2px 8px;
+      border-radius: 10px;
     }
 
     /* ── PRICING ── */
@@ -646,7 +755,7 @@
     <div class="orb orb-2"></div>
     <div class="hero-badge">CONFIDENTIAL · PREPARED EXCLUSIVELY FOR HG AESTHETICS</div>
     <h1>EU E-Commerce<br /><span>Analytics Dashboard</span></h1>
-    <p class="hero-sub">A real-time performance intelligence layer for BOL.com & Amazon EU — built and maintained by AQL.</p>
+    <p class="hero-sub">A real-time performance intelligence platform for BOL.com & Amazon EU — built and maintained by AQL.</p>
     <div class="hero-meta">
       <div class="hero-meta-item">
         <span class="label">Prepared By</span>
@@ -662,7 +771,7 @@
       </div>
       <div class="hero-meta-item">
         <span class="label">Version</span>
-        <span class="value">1.0</span>
+        <span class="value">2.0</span>
       </div>
     </div>
   </header>
@@ -678,13 +787,13 @@
     <div class="container">
       <div class="section-label">Overview</div>
       <h2>Your data, decoded — in real time.</h2>
-      <p class="lead">HG Aesthetics now has a live analytics command center pulling directly from BOL.com and Amazon EU data sources — no manual exports, no spreadsheet juggling.</p>
+      <p class="lead">HG Aesthetics now has a fully live analytics command center with six integrated modules pulling directly from BOL.com and Amazon EU — no manual exports, no spreadsheet juggling.</p>
 
       <div class="grid-3">
         <div class="stat-card">
           <div class="stat-icon">📊</div>
-          <span class="stat-value">3</span>
-          <span class="stat-label">Dashboard Views</span>
+          <span class="stat-value">6</span>
+          <span class="stat-label">Analytics Modules</span>
         </div>
         <div class="stat-card">
           <div class="stat-icon">🌍</div>
@@ -702,19 +811,82 @@
 
   <div class="divider"></div>
 
+  <!-- WHAT'S NEW -->
+  <section class="whats-new-section">
+    <div class="container">
+      <div class="section-label">What's New in v2.0</div>
+      <h2>Six new capabilities since v1.0.</h2>
+      <p class="lead">The dashboard has expanded from 3 views to a full 6-module platform with intelligence, inventory, and profitability layers built in.</p>
+
+      <div class="new-feature-grid">
+
+        <div class="new-feature-card">
+          <div class="nf-badge">New</div>
+          <span class="nf-icon">🌐</span>
+          <h4>Interactive 3D Sales Globe</h4>
+          <p>Live 3D globe on the Home tab visualizing revenue by geography. Click any country to open a detailed sidebar with mini-trends, ROAS, and order breakdowns.</p>
+        </div>
+
+        <div class="new-feature-card">
+          <div class="nf-badge">New</div>
+          <span class="nf-icon">📦</span>
+          <h4>Inventory Management</h4>
+          <p>Full SKU-level stock tracking with critical and low-stock alerts. Alert badge on the nav tab ensures nothing slips past. Includes inbound shipment status.</p>
+        </div>
+
+        <div class="new-feature-card">
+          <div class="nf-badge">New</div>
+          <span class="nf-icon">💰</span>
+          <h4>P&L / COGS Module</h4>
+          <p>Import COGS from Excel and instantly see per-SKU profitability, gross margin %, and net profit across all marketplaces in one place.</p>
+        </div>
+
+        <div class="new-feature-card">
+          <div class="nf-badge">New</div>
+          <span class="nf-icon">📄</span>
+          <h4>Automated Reports + Narratives</h4>
+          <p>Weekly and monthly reports with auto-generated performance narratives — compares current vs. prior period, highlights wins and gaps, and exports to PDF in one click.</p>
+        </div>
+
+        <div class="new-feature-card">
+          <div class="nf-badge">New</div>
+          <span class="nf-icon">🌙</span>
+          <h4>Dark Mode</h4>
+          <p>Full dark/light mode toggle — every chart, KPI card, and sidebar adapts instantly. Built for long work sessions without eye strain.</p>
+        </div>
+
+        <div class="new-feature-card">
+          <div class="nf-badge">New</div>
+          <span class="nf-icon">📅</span>
+          <h4>11 Period Presets + Custom Range</h4>
+          <p>Expanded from 6 to 11 period presets — including Last 7/30/60/90 days, Week-to-date, Month-to-date, and a fully custom date range picker.</p>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <div class="wave" style="background: #1A1A1A;">
+    <svg viewBox="0 0 1440 60" preserveAspectRatio="none" height="60">
+      <path d="M0,60 C360,0 1080,0 1440,60 L1440,0 L0,0 Z" fill="#FAFAF9"/>
+    </svg>
+  </div>
+
+  <div class="divider"></div>
+
   <!-- WHAT'S BUILT -->
   <section>
     <div class="container">
       <div class="section-label">Deliverables</div>
       <h2>Everything inside the dashboard.</h2>
-      <p class="lead">Three fully integrated analytics modules, each purpose-built for your EU marketplace operations.</p>
+      <p class="lead">Six fully integrated analytics modules, each purpose-built for your EU marketplace operations.</p>
 
       <div class="grid-2">
 
         <div class="card">
           <div class="feature-icon">🏠</div>
           <h3>Home — Command Overview</h3>
-          <p>Top-line KPIs, combined revenue by channel, interactive Revenue & Ad Spend trend chart with BOL / Amazon / All toggle, and a live Top 3 Marketplace leaderboard.</p>
+          <p>Top-line KPIs, combined revenue by channel, interactive Revenue & Ad Spend trend chart with BOL / Amazon / All toggle, live Top Marketplace leaderboard, and the 3D Sales Globe.</p>
         </div>
 
         <div class="card">
@@ -729,22 +901,25 @@
           <p>Pan-EU KPI summary with per-country drilldown across NL, FR, DE, IT, ES & BE. Includes ROAS, ad spend trends, and country-level revenue comparison.</p>
         </div>
 
-        <div class="card">
-          <div class="feature-icon">🔍</div>
-          <h3>Smart Period Filtering</h3>
-          <p>Every view supports: This Week, Last Week, Last Month, Year to Date, Last Year, and All Time — with instant recalculation across all KPIs and charts.</p>
+        <div class="card new-feature">
+          <div class="new-tag">New</div>
+          <div class="feature-icon">📦</div>
+          <h3>Inventory Tracker</h3>
+          <p>SKU-level stock monitoring with critical / low stock alert badges. The nav tab shows a live alert count so stock issues are never missed.</p>
         </div>
 
-        <div class="card">
-          <div class="feature-icon">📈</div>
-          <h3>Revenue & Ad Spend Trends</h3>
-          <p>Weekly trend lines for revenue and ad spend side-by-side — helping you spot campaign efficiency patterns and seasonal peaks at a glance.</p>
+        <div class="card new-feature">
+          <div class="new-tag">New</div>
+          <div class="feature-icon">💰</div>
+          <h3>P&L — Profit & Loss</h3>
+          <p>Import COGS from your Excel files and the dashboard instantly calculates per-SKU gross margin, net profit, and overall profitability across all channels.</p>
         </div>
 
-        <div class="card">
-          <div class="feature-icon">🔗</div>
-          <h3>Always-On Live Data</h3>
-          <p>Your sales data flows directly into the dashboard in real time — no manual exports, no refresh buttons. The moment your numbers update, the dashboard reflects it.</p>
+        <div class="card new-feature">
+          <div class="new-tag">New</div>
+          <div class="feature-icon">📄</div>
+          <h3>Reports — Weekly & Monthly</h3>
+          <p>Select any week or month and get a full performance report with an AI-written narrative, period-over-period comparisons, and one-click PDF export.</p>
         </div>
 
       </div>
@@ -758,27 +933,29 @@
     <div class="container">
       <div class="section-label">Technology</div>
       <h2>Built light. Built fast.</h2>
-      <p class="lead">Zero build tools, zero dependencies to manage. Runs directly in the browser via CDN — meaning no Node.js, no npm, no deployment pipeline headaches.</p>
+      <p class="lead">Zero build tools, zero dependencies to manage. Runs directly in the browser via CDN — no Node.js, no npm, no deployment pipeline headaches.</p>
 
       <div class="grid-2" style="margin-bottom: 32px;">
         <div class="card">
           <h3>Frontend</h3>
           <ul class="checklist">
             <li>React 18 via CDN (no build step)</li>
-            <li>Babel Standalone for JSX in-browser</li>
             <li>Recharts for all data visualizations</li>
-            <li>Responsive layout — works on any screen</li>
-            <li>Dark-mode ready design system</li>
+            <li>Globe.gl for the 3D interactive globe</li>
+            <li>jsPDF + html2canvas for PDF export</li>
+            <li>Dark mode design system — full coverage</li>
+            <li>Collapsible sidebar for maximum chart space</li>
           </ul>
         </div>
         <div class="card">
-          <h3>Data Layer</h3>
+          <h3>Data & Intelligence Layer</h3>
           <ul class="checklist">
             <li>Live data pipeline — auto-synced, always current</li>
             <li>BOL 2025 + 2026 data merged automatically</li>
             <li>Amazon combined 2025+2026 scorecard tab</li>
-            <li>Week-label based merging (no index mismatches)</li>
-            <li>Instant filter recalculation on period change</li>
+            <li>COGS imported directly from Excel files</li>
+            <li>AI-generated report narratives (auto-written)</li>
+            <li>Instant filter recalculation across all 6 modules</li>
           </ul>
         </div>
       </div>
@@ -786,6 +963,8 @@
       <div class="tech-pills">
         <span class="tech-pill">React 18</span>
         <span class="tech-pill">Recharts</span>
+        <span class="tech-pill">Globe.gl</span>
+        <span class="tech-pill">jsPDF</span>
         <span class="tech-pill">Live Data Pipeline</span>
         <span class="tech-pill">Babel Standalone</span>
         <span class="tech-pill">CDN-hosted</span>
@@ -793,6 +972,7 @@
         <span class="tech-pill">BOL.com</span>
         <span class="tech-pill">Amazon EU</span>
         <span class="tech-pill">NL · FR · DE · IT · ES · BE</span>
+        <span class="tech-pill">Excel COGS Import</span>
       </div>
     </div>
   </section>
@@ -803,8 +983,8 @@
   <section>
     <div class="container">
       <div class="section-label">Monthly Retainer</div>
-      <h2>What 999 EGP/month covers.</h2>
-      <p class="lead">Your dashboard stays accurate, fast, and up to date — without you lifting a finger.</p>
+      <h2>What 1,499 EGP/month covers.</h2>
+      <p class="lead">Your dashboard stays accurate, fast, and up to date across all six modules — without you lifting a finger.</p>
 
       <div class="grid-2">
         <div class="card">
@@ -815,14 +995,16 @@
             <li>New data columns or tabs connected on request</li>
             <li>Bug fixes with same-day turnaround</li>
             <li>Dashboard version bumps & cache management</li>
+            <li>COGS file updates and data re-imports</li>
           </ul>
         </div>
         <div class="card">
           <div class="feature-icon">🚀</div>
           <h3>Continuous Improvements</h3>
           <ul class="checklist" style="margin-top: 8px;">
-            <li>Up to 2 new metric / chart requests per month</li>
+            <li>Up to 3 new metric / chart requests per month</li>
             <li>Filter or period logic adjustments</li>
+            <li>Inventory & P&L module updates</li>
             <li>UI polish and mobile responsiveness fixes</li>
             <li>Priority WhatsApp support</li>
           </ul>
@@ -842,13 +1024,14 @@
 
         <div class="price-card">
           <div class="price-label">One-Time Setup</div>
-          <div class="price-amount">6,000 <span>EGP</span></div>
+          <div class="price-amount">9,000 <span>EGP</span></div>
           <div class="price-sub">Paid once at project start</div>
           <ul class="price-items">
-            <li>Full dashboard build & configuration</li>
+            <li>Full 6-module dashboard build</li>
             <li>BOL + Amazon EU data integration</li>
-            <li>All 3 analytics views delivered</li>
-            <li>Period filtering across all KPIs</li>
+            <li>Inventory & P&L modules configured</li>
+            <li>3D Globe + Reports + PDF export</li>
+            <li>COGS pipeline from your Excel files</li>
             <li>Source code & deployment setup</li>
             <li>Handover documentation</li>
           </ul>
@@ -857,12 +1040,13 @@
         <div class="price-card featured">
           <div class="badge">Monthly Retainer</div>
           <div class="price-label">Ongoing</div>
-          <div class="price-amount">999 <span>EGP / mo</span></div>
+          <div class="price-amount">1,499 <span>EGP / mo</span></div>
           <div class="price-sub">Billed monthly · cancel anytime</div>
           <ul class="price-items">
-            <li>Dashboard maintenance & upkeep</li>
+            <li>All 6 modules maintained & updated</li>
             <li>Data schema change management</li>
-            <li>Up to 2 new features / charts per month</li>
+            <li>Up to 3 new features / charts per month</li>
+            <li>COGS & inventory data updates</li>
             <li>Bug fixes — same-day response</li>
             <li>WhatsApp priority support</li>
             <li>Monthly performance check-in</li>
@@ -902,15 +1086,15 @@
         <div class="deposit-breakdown">
           <div class="deposit-item">
             <span class="di-label">Setup Fee</span>
-            <span class="di-value rose">6,000 EGP</span>
+            <span class="di-value rose">9,000 EGP</span>
           </div>
           <div class="deposit-item">
             <span class="di-label">First Month Retainer</span>
-            <span class="di-value">999 EGP</span>
+            <span class="di-value">1,499 EGP</span>
           </div>
           <div class="deposit-item">
             <span class="di-label">Total to Start</span>
-            <span class="di-value">6,999 EGP</span>
+            <span class="di-value">10,499 EGP</span>
           </div>
         </div>
       </div>
@@ -927,13 +1111,13 @@
       <p class="lead">No fine print. Just a fair working relationship.</p>
 
       <div class="terms-box">
-        <p><strong>Setup Fee:</strong> The 6,000 EGP project fee is due before work begins and covers the full build, integration, and deployment of the dashboard.</p>
+        <p><strong>Setup Fee:</strong> The 9,000 EGP project fee is due before work begins and covers the full build, integration, and deployment of all six dashboard modules.</p>
         <br />
-        <p><strong>Monthly Retainer:</strong> 999 EGP/month, billed on the same date each month. The retainer begins the month after the setup fee is received.</p>
+        <p><strong>Monthly Retainer:</strong> 1,499 EGP/month, billed on the same date each month. The retainer begins the month after the setup fee is received.</p>
         <br />
         <p><strong>Cancellation:</strong> Cancel the retainer anytime with 7 days notice. No lock-in period. The dashboard and all source code remain yours.</p>
         <br />
-        <p><strong>Scope Changes:</strong> Major new modules (e.g., a fully new marketplace or analytics tab) beyond 2 requests/month may be quoted separately. We'll always discuss before billing anything extra.</p>
+        <p><strong>Scope Changes:</strong> Major new modules (e.g., a fully new marketplace or analytics tab) beyond 3 requests/month may be quoted separately. We'll always discuss before billing anything extra.</p>
         <br />
         <p><strong>Data Access:</strong> The client maintains full ownership of all underlying data sources. AQL requires read access to those sources to build and maintain the live integration.</p>
         <br />

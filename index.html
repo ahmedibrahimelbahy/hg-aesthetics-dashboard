@@ -60,12 +60,40 @@
 </head>
 <body>
   <div id="root"></div>
+  <div id="error-display" style="display:none;position:fixed;top:0;left:0;width:100%;padding:20px;background:#1e293b;color:#f87171;font-family:monospace;font-size:13px;z-index:9999;white-space:pre-wrap;overflow:auto;max-height:50vh;"></div>
 
-  <script type="text/babel" src="ecommerce-dashboard.jsx?v=36"></script>
-  <script type="text/babel">
-    const { createRoot } = ReactDOM;
-    const root = createRoot(document.getElementById('root'));
-    root.render(<EcommerceDashboard />);
+  <script>
+    window.onerror = function(msg, src, line, col, err) {
+      var el = document.getElementById('error-display');
+      el.style.display = 'block';
+      el.textContent = 'JS ERROR: ' + msg + '\nFile: ' + src + '\nLine: ' + line + '\n' + (err ? err.stack : '');
+    };
+    window.addEventListener('unhandledrejection', function(e) {
+      var el = document.getElementById('error-display');
+      el.style.display = 'block';
+      el.textContent = 'UNHANDLED PROMISE: ' + e.reason;
+    });
+  </script>
+
+  <script src="cogs-data.js"></script>
+  <script type="text/babel" src="ecommerce-dashboard.jsx?v=57"></script>
+  <script>
+    function mountApp() {
+      if (typeof App === 'undefined') {
+        setTimeout(mountApp, 50);
+        return;
+      }
+      try {
+        const { createRoot } = ReactDOM;
+        const root = createRoot(document.getElementById('root'));
+        root.render(React.createElement(App));
+      } catch(e) {
+        var el = document.getElementById('error-display');
+        el.style.display = 'block';
+        el.textContent = 'MOUNT ERROR: ' + e.message + '\n' + e.stack;
+      }
+    }
+    window.addEventListener('load', function() { setTimeout(mountApp, 200); });
   </script>
 </body>
 </html>
